@@ -1,0 +1,18 @@
+# Environnements
+.env
+.env.local
+.env.*.local
+
+# Data
+Data/
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+
+# Documentation
+Documentation/
+opera-python/
