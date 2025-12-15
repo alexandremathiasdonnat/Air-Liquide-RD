@@ -5,6 +5,7 @@
 
 # Data
 Data/
+*.csv
 
 # Système
 .DS_Store
