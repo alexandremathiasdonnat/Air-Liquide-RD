@@ -1,0 +1,108 @@
+We fixed dates (140 observations) : 
+TRAIN_START = "2025-11-16 16:00:00"     
+TRAIN_END   = "2025-11-22 23:00:00"   
+output index : ridge / lgbm / ElasticNet
+-----------------------------------  
+-----------------------------------
+-----------------------------------
+
+Config 1 — Safe simplex (Simplex constraint (sum = 1, w ≥ 0): enforces a convex combination of experts, ensuring interpretability and preventing negative or arbitrarily large weights)
+
+```
+mod = Mixture(...,
+  model="FTRL",
+  loss_type="mse",
+  loss_gradient=True,
+  parameters={
+    "constraints": [
+      {"type":"eq", "fun": lambda w: np.sum(w)-1},
+      {"type":"ineq", "fun": lambda w: w},
+    ],
+    "options": {"maxiter": 200},
+  }
+)
+```
+--> Last weights: [0.16102021 0.28124316 0.55773663] sum = 1.0
+        RMSE	        MAE	        R2 
+--> moe	174.886327	158.613080	-0.107099
+
+-----------------------------------
+
+Config 2 — L2 stabilized (= EN) (L2 (ridge) regularization: penalizes large weights to stabilize the optimization and reduce sensitivity to noise, leading to smoother and more persistent expert weights.)
+
+```
+lam = 1e-2
+mod = Mixture(...,
+  model="FTRL",
+  loss_type="mse",
+  loss_gradient=True,
+  parameters={
+    "fun_reg":      lambda w: lam * np.sum(w**2),
+    "fun_reg_grad": lambda w: 2*lam*w,
+    "constraints": [
+      {"type":"eq", "fun": lambda w: np.sum(w)-1},
+      {"type":"ineq", "fun": lambda w: w},
+    ],
+    "options": {"maxiter": 200},
+  }
+)
+```
+--> Last weights: [-7.87565687e-16 -2.12366695e-16  1.00000000e+00] sum = 1.0
+        RMSE	        MAE	        R2 
+--> moe	82.353598	56.461518	0.754507
+
+-----------------------------------
+
+Config 3 — Entropy (anti-ElasticNet-only)) (=EN) (Entropy regularization: discourages weight collapse by explicitly favoring diversified mixtures, preventing a single expert from dominating unless strongly justified by the data)
+
+```
+lam = 1e-2
+eps = 1e-12
+mod = Mixture(...,
+  model="FTRL",
+  loss_type="mse",
+  loss_gradient=True,
+  parameters={
+    "fun_reg":      lambda w: lam * np.sum(w*np.log(w+eps)),
+    "fun_reg_grad": lambda w: lam * (np.log(w+eps) + 1.0),
+    "constraints": [
+      {"type":"eq", "fun": lambda w: np.sum(w)-1},
+      {"type":"ineq", "fun": lambda w: w},
+    ],
+    "options": {"maxiter": 200},
+  }
+)
+```
+--> Last weights: [1.48768555e-06 1.18283570e-04 9.99880229e-01] sum = 1.0
+        RMSE	        MAE	        R2 
+--> moe	82.353421	56.470563	0.754508
+
+-----------------------------------
+-----------------------------------
+-----------------------------------
+
+Case 1 — Forced diversification
+
+Final weights: 𝑤=[0.16,0.28,0.56]
+Performance: RMSE ≈ 175, MAE ≈ 159, 𝑅2≈−0.11
+The aggregator enforces diversification despite one expert being clearly superior, which dilutes the signal and leads to worse-than-best-expert performance. This typically comes from overly strong regularization or entropy constraints that prevent weight collapse. The result is mathematically clean but predictively poor.
+
+
+Case 2 — Full collapse to the best expert
+
+
+Final weights: 𝑤≈[0,0,1]
+Performance: RMSE ≈ 82.35, MAE ≈ 56.46, 𝑅2≈0.75
+FTRL correctly identifies ElasticNet as the dominant expert, so the mixture collapses to it. The MOE performance exactly matches ElasticNet, which is the optimal behavior in this setup and consistent with regret-minimization theory.
+
+
+Case 3 — Near-collapse (numerical noise)
+
+Final weights: w≈[0,0.0001,0.9999]
+Performance: RMSE ≈ 82.35, MAE ≈ 56.47, 𝑅2≈0.75
+Numerically different but functionally identical to Case 2. The small residual weights are solver/tolerance artifacts. Same conclusion: collapsing to ElasticNet yields the best result.
+
+-->Final Hypothesis : the issue is not OPERA but insufficient expert diversity. When one expert dominates globally and the others are structurally weaker, any regularization that prevents weight collapse necessarily degrades performance.
+
+In this setup, the mixture does not add value—the optimal behavior is to collapse to the dominant expert. This is neither a bug nor a poor implementation, but a clear experimental diagnosis.
+
