@@ -1,4 +1,4 @@
-#FTRL algo
+#FTRL algorithm
 
 We fixed dates (140 observations) : 
 TRAIN_START = "2025-11-16 16:00:00"     
