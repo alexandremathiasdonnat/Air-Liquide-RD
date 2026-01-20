@@ -12,6 +12,8 @@ Thumbs.db
 
 # Cache
 .cache/
+.pyc/
+__pycache__/
 
 # Documentation
 Documentation/
