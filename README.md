@@ -8,7 +8,7 @@ Accurate wind power forecasts are critical to ensure a continuous and cost-effic
 
 ## Problem Context
 
-**Objective:** predict wind power production at a specific industrial site on a day-ahead, hourly basis.
+**Objective:** predict wind power production at a specific industrial site (Belgium) on a day-ahead, hourly basis.
 
 **Operational constraint:** full 24-hour vector forecasting with no intermediate observations available during the delivery period.
 
