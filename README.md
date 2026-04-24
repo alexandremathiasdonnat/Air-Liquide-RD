@@ -19,6 +19,8 @@ Data characteristics:
 - heterogeneous meteorological forecasts from multiple providers,
 - strong temporal dependency and non-stationarity.
 
+![pb](problem.jpg)
+
 ## Modeling Approach
 
 The project explores a range of forecasting and aggregation strategies tailored to strict temporal and operational constraints:
@@ -34,6 +36,8 @@ Evaluation protocol:
 - strict train / validation / test separation,
 - expanding-window backtesting to ensure full temporal consistency and realistic generalization.
 
+![model](modelisation.jpg)
+
 ## Mixture-of-Experts
 
 A Mixture-of-Experts (MoE) approach is implemented to dynamically aggregate multiple forecasting models:
@@ -48,6 +52,13 @@ The framework is built using and extending the OPERA Python library concepts, ad
 ## Current Application
 
 This repository now contains a lightweight React application to run, compare, and visualize aggregation methods on wind forecasting CSV datasets.
+
+![trail1](trail1.jpg)
+![trail1](trail2.jpg)
+![trail1](trail3.jpg)
+![trail1](trail4.jpg)
+![trail1](trail5.jpg)
+![trail1](trail6.jpg)
 
 The interface supports:
 
