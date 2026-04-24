@@ -19,7 +19,7 @@ Data characteristics:
 - heterogeneous meteorological forecasts from multiple providers,
 - strong temporal dependency and non-stationarity.
 
-![pb](problem.jpg)
+![pb](/figures/problem.jpg)
 
 ## Modeling Approach
 
@@ -36,7 +36,7 @@ Evaluation protocol:
 - strict train / validation / test separation,
 - expanding-window backtesting to ensure full temporal consistency and realistic generalization.
 
-![model](modelisation.jpg)
+![model](/figures/modelisation.jpg)
 
 ## Mixture-of-Experts
 
@@ -53,9 +53,9 @@ The framework is built using and extending the OPERA Python library concepts, ad
 
 This repository now contains a lightweight React application to run, compare, and visualize aggregation methods on wind forecasting CSV datasets.
 
-![trail1](trail1.jpg)
+![trail1](/figures/trail1.jpg)
 
-![trail1](trail3.jpg)
+![trail1](/figures/rail3.jpg)
 
 
 
@@ -78,9 +78,9 @@ Available method families include:
 - static baselines: simple mean, median, trimmed mean,
 - adaptive baselines: inverse-MSE weighting, best expert, ridge blending.
 
-![trail1](trail2.jpg)
+![trail1](/figures/trail2.jpg)
 
-![t](trail4.jpg)
+![t](/figures/trail4.jpg)
 
 ## Experimentation Tools
 
@@ -94,9 +94,9 @@ The project has also been enriched with:
 The app can run either in production mode on real input datasets or in random mode, where synthetic experts are regenerated at each run from configurable ranges, randomly distributed expert characteristics, and random phase counts/durations to support independence assumptions and statistical robustness in Monte Carlo simulations as `n` grows.
 
 
-![trail6](trail5.jpg)
+![trail6](/figures/trail5.jpg)
 
-![trail6](trail6.jpg)
+![trail6](/figures/trail6.jpg)
 
 ## Expected CSV Format
 
