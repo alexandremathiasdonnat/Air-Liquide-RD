@@ -55,7 +55,7 @@ This repository now contains a lightweight React application to run, compare, an
 
 ![trail1](/figures/trail1.jpg)
 
-![trail1](/figures/rail3.jpg)
+![trail1](/figures/trail3.jpg)
 
 
 
