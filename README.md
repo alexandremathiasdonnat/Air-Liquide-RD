@@ -5,6 +5,8 @@ This repository presents a forecasting and aggregation framework designed for da
 
 Accurate wind power forecasts are critical to ensure a continuous and cost-efficient electricity supply to electrolyzers, which operate under strong industrial and operational constraints. In this setting, forecast errors directly impact the balance between renewable generation and fossil-based compensation under meteorological uncertainty.
 
+**Engine Open Source access : https://moe-runner.netlify.app**
+
 ## Problem Context
 
 Objective: predict wind power production at a specific industrial site (Belgium) on a day-ahead, hourly basis.
@@ -55,7 +57,7 @@ This repository now contains a lightweight React application to run, compare, an
 
 ![trail1](/figures/trail1.jpg)
 
-![trail1](/figures/trail3.jpg)
+![trail1](/figures/Trail3.jpg)
 
 
 
