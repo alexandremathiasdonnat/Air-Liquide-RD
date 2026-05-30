@@ -42,7 +42,7 @@ Evaluation protocol:
 
 ## Mixture-of-Experts
 
-A Mixture-of-Experts (MoE) approach is implemented to dynamically aggregate multiple forecasting models:
+A Mixture-of-Experts (MoE) approach is generally implemented to dynamically aggregate multiple forecasting models:
 
 - online aggregation using continuous-time learning formulations,
 - constant-weight rebalancing mechanisms,
