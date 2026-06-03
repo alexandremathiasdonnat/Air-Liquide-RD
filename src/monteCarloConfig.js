@@ -4,7 +4,7 @@ import { HMOE_REGIME_TYPES } from "./hmoe";
 export const DEFAULT_LOSS_TYPE = "mse";
 export const DEFAULT_USE_GRAD = true;
 export const DEFAULT_FTRL_PARAMS = { eta0: 0.01, tol: 1e-20, maxiter: 50 };
-export const DEFAULT_EXTRA_PARAMS = { window: 48, alpha: 1, trim: 20 };
+export const DEFAULT_EXTRA_PARAMS = { window: 48, alpha: 1, trim: 20, nTrees: 50, xgbLr: 0.1, mlpEpochs: 50, gruEpochs: 30, gruSeqLen: 8, lstmEpochs: 30, lstmSeqLen: 8 };
 export const DEFAULT_HMOE_REGIME_IDS = HMOE_REGIME_TYPES.map((regime) => regime.id);
 
 function getRunChronologyValue(run, index) {
@@ -111,6 +111,21 @@ export function getMonteCarloAlgoParamTokens(algoId, config) {
   if (algoId === "Ridge") {
     tokens.push(`alpha ${formatValue(config.extraP.alpha)}`);
   }
+  if (algoId === "XGBoostStacking") {
+    tokens.push(`trees ${formatValue(config.extraP.nTrees)}`);
+    tokens.push(`lr ${formatValue(config.extraP.xgbLr)}`);
+  }
+  if (algoId === "MLPStacking") {
+    tokens.push(`epochs ${formatValue(config.extraP.mlpEpochs)}`);
+  }
+  if (algoId === "GRU") {
+    tokens.push(`epochs ${formatValue(config.extraP.gruEpochs)}`);
+    tokens.push(`seqLen ${formatValue(config.extraP.gruSeqLen)}`);
+  }
+  if (algoId === "LSTM") {
+    tokens.push(`epochs ${formatValue(config.extraP.lstmEpochs)}`);
+    tokens.push(`seqLen ${formatValue(config.extraP.lstmSeqLen)}`);
+  }
 
   return tokens;
 }
@@ -141,6 +156,19 @@ export function buildAlgoRunLabel(algoId, config, expertMode = null) {
   if (algoId === "TrimmedMean") parts.push(`trim=${formatValue(config.extraP.trim)}%`);
   if (algoId === "InvMSE" || algoId === "BestExpert") parts.push(`win=${formatValue(config.extraP.window)}`);
   if (algoId === "Ridge") parts.push(`α=${formatValue(config.extraP.alpha)}`);
+  if (algoId === "XGBoostStacking") {
+    parts.push(`trees=${formatValue(config.extraP.nTrees)}`);
+    parts.push(`lr=${formatValue(config.extraP.xgbLr)}`);
+  }
+  if (algoId === "MLPStacking") parts.push(`ep=${formatValue(config.extraP.mlpEpochs)}`);
+  if (algoId === "GRU") {
+    parts.push(`ep=${formatValue(config.extraP.gruEpochs)}`);
+    parts.push(`seq=${formatValue(config.extraP.gruSeqLen)}`);
+  }
+  if (algoId === "LSTM") {
+    parts.push(`ep=${formatValue(config.extraP.lstmEpochs)}`);
+    parts.push(`seq=${formatValue(config.extraP.lstmSeqLen)}`);
+  }
   if (isHmoe && config.selectedHmoeRegimes?.length) {
     parts.push(config.selectedHmoeRegimes.map((id) => REGIME_SHORT[id] || id).join("+"));
   }

@@ -138,7 +138,7 @@ export async function runMonteCarloSimulation({
       }
       await yieldToUi();
       throwIfAborted(signal);
-      const run = runAggregation(
+      const run = await runAggregation(
         augRows,
         expertColumns,
         algoId,

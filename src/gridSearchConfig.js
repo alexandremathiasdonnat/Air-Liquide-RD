@@ -60,6 +60,14 @@ export function getInitialGridSearchComboOverrides(algoId) {
       return [{}, { extraP: { window: 24 } }];
     case "Ridge":
       return [{}, { extraP: { alpha: 5 } }];
+    case "XGBoostStacking":
+      return [{}, { extraP: { nTrees: 100, xgbLr: 0.05 } }];
+    case "MLPStacking":
+      return [{}, { extraP: { mlpEpochs: 80 } }];
+    case "GRU":
+      return [{}, { extraP: { gruEpochs: 20, gruSeqLen: 12 } }];
+    case "LSTM":
+      return [{}, { extraP: { lstmEpochs: 20, lstmSeqLen: 12 } }];
     default:
       return [{}];
   }

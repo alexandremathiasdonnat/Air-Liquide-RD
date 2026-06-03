@@ -56,7 +56,10 @@ export function runMedian(data, cols) {
 
 export function runTrimmedMean(data, cols, params) {
   const expertCount = cols.length;
-  const trimmedPerSide = Math.max(0, Math.floor((expertCount * (params.trim || 20)) / 100 / 2));
+  const raw = Math.floor((expertCount * (params.trim || 20)) / 100 / 2);
+  const trimmedPerSide = params.trim > 0 && expertCount >= 3
+    ? Math.min(Math.max(1, raw), Math.floor((expertCount - 1) / 2))
+    : raw;
   const predictions = [];
   const weightHistory = [];
   for (let index = 0; index < data.length; index += 1) {

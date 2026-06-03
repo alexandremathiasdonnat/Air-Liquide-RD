@@ -3,6 +3,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import "./App.css";
 import { HMOE_REGIME_TYPES, ensureHmoeFeatures, runHmoe } from "./hmoe";
 import { vnorm, runBOA, runMLpol, runMLprod, runFTRL } from "./moe";
+import { runLinearStacking, runXGBoostStacking } from "./aggregationStacking";
+import { runMLPStacking, runGRUAggregator, runLSTMAggregator } from "./aggregationNeural";
 import { formatDuration } from "./metrics";
 import { estimateMonteCarloMs, runMonteCarloSimulation } from "./monteCarlo";
 import { estimateMonteCarloGridSearchMs, runMonteCarloGridSearch } from "./monteCarloGridSearch";
@@ -74,7 +76,35 @@ const EXPERT_GROUPS = [
 const ALL_SYNTHETIC = EXPERT_GROUPS.flatMap(g=>g.experts.map(e=>e.id));
 
 const ALGO_GROUPS = [
-  { label:"Opera - MOE", algos:[
+  { label:"Statiques", algos:[
+    {id:"SimpleMean",name:"Moyenne simple",desc:"Moyenne arithmétique non pondérée.",params:[]},
+    {id:"Median",name:"Médiane",desc:"Médiane des prédictions.",params:[]},
+    {id:"TrimmedMean",name:"Trimmed Mean",desc:"Moyenne après exclusion des X% d'experts.",params:[
+      {id:"trim",label:"Trim (%)",type:"slider",min:5,max:40,step:5,default:20},
+    ]},
+  ]},
+  { label:"Adaptatifs / Statistiques", algos:[
+    {id:"InvMSE",name:"Inverse MSE",desc:"Poids inversement proportionnels au MSE glissant.",params:[
+      {id:"window",label:"Fenêtre (pas)",type:"slider",min:6,max:168,step:6,default:48},
+    ]},
+    {id:"BestExpert",name:"Best Expert",desc:"Sélectionne l'expert avec la plus faible MAE glissante.",params:[
+      {id:"window",label:"Fenêtre (pas)",type:"slider",min:6,max:168,step:6,default:48},
+    ]},
+  ]},
+  { label:"Stacking", algos:[
+    {id:"LinearStacking",name:"Linear Regression Stacking",desc:"Méta-modèle OLS appris sur 70% des données (sans fuite temporelle).",params:[]},
+    {id:"Ridge",name:"Ridge Regression Stacking",desc:"Combinaison linéaire régularisée L2 (entraîné sur l'intégralité des données).",params:[
+      {id:"alpha",label:"Régularisation α",type:"slider",min:0.1,max:50,step:0.1,default:1},
+    ]},
+    {id:"XGBoostStacking",name:"XGBoost Regressor Stacking",desc:"Gradient boosting de stumps appris sur 70% des données.",params:[
+      {id:"nTrees",label:"Nb arbres",type:"slider",min:10,max:200,step:10,default:50},
+      {id:"xgbLr",label:"Learning rate",type:"slider",min:0.01,max:0.3,step:0.01,default:0.1},
+    ]},
+    {id:"MLPStacking",name:"MLP Regressor Stacking",desc:"Petit réseau dense (Input→16→8→K softmax) apprenant les poids experts dynamiquement.",params:[
+      {id:"mlpEpochs",label:"Epoch",type:"slider",min:30,max:80,step:5,default:50},
+    ]},
+  ]},
+  { label:"Online Learning / Opera", algos:[
     {id:"BOA",name:"MOE BOA",desc:"Bernstein Online Aggregation.",params:[]},
     {id:"MLpol",name:"MOE MLpol",desc:"Multiplicative Weights Polynomial.",params:[]},
     {id:"MLprod",name:"MOE MLprod",desc:"Multiplicative Weights Prod.",params:[]},
@@ -84,7 +114,7 @@ const ALGO_GROUPS = [
       {id:"maxiter",label:"Max itérations",type:"slider",min:10,max:200,step:10,default:50},
     ]},
   ]},
-  { label:"Opera - HMOE", algos:[
+  { label:"HMOE", algos:[
     {id:"HMOE_BOA",name:"HMOE BOA",desc:"BOA avec branches regime-gated HMOE.",params:[]},
     {id:"HMOE_MLpol",name:"HMOE MLpol",desc:"MLpol avec branches regime-gated HMOE.",params:[]},
     {id:"HMOE_MLprod",name:"HMOE MLprod",desc:"MLprod avec branches regime-gated HMOE.",params:[]},
@@ -94,22 +124,14 @@ const ALGO_GROUPS = [
       {id:"maxiter",label:"Max itérations",type:"slider",min:10,max:200,step:10,default:50},
     ]},
   ]},
-  { label:"Statiques", algos:[
-    {id:"SimpleMean",name:"Moyenne simple",desc:"Moyenne arithmétique non pondérée.",params:[]},
-    {id:"Median",name:"Médiane",desc:"Médiane des prédictions.",params:[]},
-    {id:"TrimmedMean",name:"Trimmed Mean",desc:"Moyenne après exclusion des X% d'experts.",params:[
-      {id:"trim",label:"Trim (%)",type:"slider",min:5,max:40,step:5,default:20},
+  { label:"Temporal Neural Aggregation", algos:[
+    {id:"GRU",name:"GRU Aggregator",desc:"Réseau GRU capturant la mémoire temporelle pour produire des poids experts dynamiques.",params:[
+      {id:"gruEpochs",label:"Epoch",type:"slider",min:5,max:80,step:5,default:30},
+      {id:"gruSeqLen",label:"Longueur séquence",type:"slider",min:4,max:24,step:2,default:8},
     ]},
-  ]},
-  { label:"Adaptatifs", algos:[
-    {id:"InvMSE",name:"Inverse MSE",desc:"Poids inversement proportionnels au MSE.",params:[
-      {id:"window",label:"Fenêtre (pas)",type:"slider",min:6,max:168,step:6,default:48},
-    ]},
-    {id:"BestExpert",name:"Best Expert",desc:"Sélectionne l'expert avec la plus faible MAE.",params:[
-      {id:"window",label:"Fenêtre (pas)",type:"slider",min:6,max:168,step:6,default:48},
-    ]},
-    {id:"Ridge",name:"Ridge Blending",desc:"Combinaison linéaire régularisée L2.",params:[
-      {id:"alpha",label:"Régularisation α",type:"slider",min:0.1,max:50,step:0.1,default:1},
+    {id:"LSTM",name:"LSTM Aggregator",desc:"Réseau LSTM (H=16, cell+hidden state) capturant la mémoire temporelle longue pour produire des poids experts dynamiques.",params:[
+      {id:"lstmEpochs",label:"Epoch",type:"slider",min:5,max:80,step:5,default:30},
+      {id:"lstmSeqLen",label:"Longueur séquence",type:"slider",min:4,max:24,step:2,default:8},
     ]},
   ]},
 ];
@@ -135,11 +157,11 @@ const THEME = {
 function solveLinear(A,b){const n=b.length,M=A.map((row,i)=>[...row,b[i]]);for(let col=0;col<n;col++){let max=col;for(let row=col+1;row<n;row++)if(Math.abs(M[row][col])>Math.abs(M[max][col]))max=row;[M[col],M[max]]=[M[max],M[col]];for(let row=col+1;row<n;row++){const f=M[row][col]/M[col][col];for(let j=col;j<=n;j++)M[row][j]-=f*M[col][j];}}const x=new Array(n).fill(0);for(let i=n-1;i>=0;i--){x[i]=M[i][n];for(let j=i+1;j<n;j++)x[i]-=M[i][j]*x[j];x[i]/=M[i][i];}return x;}
 function runSimpleMean(data,cols){const K=cols.length;return{predictions:data.map(r=>cols.reduce((s,c)=>s+(r[c]||0),0)/K),weightHistory:data.map(()=>new Array(K).fill(1/K))};}
 function runMedian(data,cols){const K=cols.length,preds=[],wh=[];for(let t=0;t<data.length;t++){const vals=cols.map(c=>data[t][c]||0),sorted=[...vals].sort((a,b)=>a-b);const med=K%2===0?(sorted[K/2-1]+sorted[K/2])/2:sorted[Math.floor(K/2)];const dists=vals.map(v=>Math.abs(v-med)+1e-8);preds.push(med);wh.push(vnorm(dists.map(d=>1/d)));}return{predictions:preds,weightHistory:wh};}
-function runTrimmedMean(data,cols,params){const K=cols.length,nT=Math.max(0,Math.floor(K*(params.trim||20)/100/2));const preds=[],wh=[];for(let t=0;t<data.length;t++){const vals=cols.map(c=>data[t][c]||0);const idxSorted=vals.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v);const kept=idxSorted.slice(nT,K-nT);const pred=kept.reduce((s,x)=>s+x.v,0)/kept.length;const w=new Array(K).fill(0);kept.forEach(x=>{w[x.i]=1/kept.length;});preds.push(pred);wh.push(w);}return{predictions:preds,weightHistory:wh};}
+function runTrimmedMean(data,cols,params){const K=cols.length;const raw=Math.floor(K*(params.trim||20)/100/2);const nT=params.trim>0&&K>=3?Math.min(Math.max(1,raw),Math.floor((K-1)/2)):raw;const preds=[],wh=[];for(let t=0;t<data.length;t++){const vals=cols.map(c=>data[t][c]||0);const idxSorted=vals.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v);const kept=idxSorted.slice(nT,K-nT);const pred=kept.reduce((s,x)=>s+x.v,0)/kept.length;const w=new Array(K).fill(0);kept.forEach(x=>{w[x.i]=1/kept.length;});preds.push(pred);wh.push(w);}return{predictions:preds,weightHistory:wh};}
 function runInvMSE(data,cols,params){const K=cols.length,win=params.window||48,preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let w;if(t<2){w=new Array(K).fill(1/K);}else{const sl=data.slice(Math.max(0,t-win),t);const mses=cols.map(c=>{const e=sl.map(r=>(r[c]||0)-r.y_true);return e.reduce((s,v)=>s+v**2,0)/sl.length+1e-6;});w=vnorm(mses.map(m=>1/m));}preds.push(w.reduce((s,wk,k)=>s+wk*x[k],0));wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
 function runBestExpert(data,cols,params){const K=cols.length,win=params.window||48,preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let bi=0;if(t>=2){const sl=data.slice(Math.max(0,t-win),t);const maes=cols.map(c=>{const e=sl.map(r=>Math.abs((r[c]||0)-r.y_true));return e.reduce((s,v)=>s+v,0)/sl.length;});bi=maes.indexOf(Math.min(...maes));}const w=new Array(K).fill(0);w[bi]=1;preds.push(x[bi]);wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
 function runRidge(data,cols,params){const K=cols.length,alpha=params.alpha||1;const X=data.map(r=>cols.map(c=>r[c]||0)),y=data.map(r=>r.y_true);const XtX=Array.from({length:K},(_,i)=>Array.from({length:K},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)+(i===j?alpha:0)));const Xty=Array.from({length:K},(_,i)=>X.reduce((s,row,t)=>s+row[i]*y[t],0));const wR=solveLinear(XtX,Xty);const wD=vnorm(wR.map(Math.abs));return{predictions:X.map(row=>row.reduce((s,v,k)=>s+v*wR[k],0)),weightHistory:data.map(()=>[...wD])};}
-function runAlgo(data,cols,algoId,lt,ug,ep,fp){switch(algoId){case"BOA":return runBOA(data,cols,lt,ug);case"MLpol":return runMLpol(data,cols,lt,ug);case"MLprod":return runMLprod(data,cols,lt,ug);case"FTRL":return runFTRL(data,cols,lt,ug,fp);case"SimpleMean":return runSimpleMean(data,cols);case"Median":return runMedian(data,cols);case"TrimmedMean":return runTrimmedMean(data,cols,ep);case"InvMSE":return runInvMSE(data,cols,ep);case"BestExpert":return runBestExpert(data,cols,ep);case"Ridge":return runRidge(data,cols,ep);default:return runBOA(data,cols,lt,ug);}}
+async function runAlgo(data,cols,algoId,lt,ug,ep,fp,onProgress){switch(algoId){case"BOA":return runBOA(data,cols,lt,ug);case"MLpol":return runMLpol(data,cols,lt,ug);case"MLprod":return runMLprod(data,cols,lt,ug);case"FTRL":return runFTRL(data,cols,lt,ug,fp);case"SimpleMean":return runSimpleMean(data,cols);case"Median":return runMedian(data,cols);case"TrimmedMean":return runTrimmedMean(data,cols,ep);case"InvMSE":return runInvMSE(data,cols,ep);case"BestExpert":return runBestExpert(data,cols,ep);case"LinearStacking":return runLinearStacking(data,cols,ep);case"Ridge":return runRidge(data,cols,ep);case"XGBoostStacking":return runXGBoostStacking(data,cols,ep);case"MLPStacking":return await runMLPStacking(data,cols,ep,onProgress);case"GRU":return await runGRUAggregator(data,cols,ep,onProgress);case"LSTM":return await runLSTMAggregator(data,cols,ep,onProgress);default:return runBOA(data,cols,lt,ug);}}
 function getHmoeBaseAlgoId(algoId){return algoId.startsWith("HMOE_")?algoId.replace("HMOE_",""):algoId;}
 
 // ─── Rand Expert generation ───────────────────────────────────────────────────
@@ -603,6 +625,7 @@ export default function App(){
   const [prodSelectedExperts,setProdSelectedExperts]=useState([]);
   const [results,setResults]=useState(null);
   const [running,setRunning]=useState(false);
+  const [runProgress,setRunProgress]=useState({visible:false,label:"",epoch:0,total:0});
   const [tab,setTab]=useState("forecast");
   const [horizonH,setHorizonH]=useState(48);
   const [allRuns,setAllRuns]=useState([]);
@@ -677,7 +700,7 @@ export default function App(){
 
   const lastCtxKey=useRef(null);
 
-  const handleRun=()=>{
+  const handleRun=async()=>{
     let cols,augRows,randExpertsUsed=[],evalRows=filteredRows,ctxDateFrom=dateFrom,ctxDateTo=dateTo;
 
     if(prodMode){
@@ -705,16 +728,23 @@ export default function App(){
       cols=randExpertsUsed.map(e=>e.id);
     }
 
+    const algoLabel=ALGOS.find(a=>a.id===algoId)?.name||algoId;
+    const epochTotal=algoId==="MLPStacking"?(extraP.mlpEpochs||50):algoId==="GRU"?(extraP.gruEpochs||30):algoId==="LSTM"?(extraP.lstmEpochs||30):0;
+    const nRows=(augRows||evalRows||filteredRows).length;
+    const complexityMs={SimpleMean:0.03,Median:0.04,TrimmedMean:0.04,InvMSE:0.07,BestExpert:0.06,LinearStacking:0.12,Ridge:0.10,XGBoostStacking:0.35,BOA:0.18,MLpol:0.16,MLprod:0.16,FTRL:0.15,HMOE_BOA:0.45,HMOE_MLpol:0.40,HMOE_MLprod:0.40,HMOE_FTRL:0.38}[algoId]||0.12;
+    const estimatedMs=epochTotal>0?0:Math.max(250,nRows*complexityMs);
     setRunning(true);
-    setTimeout(()=>{
+    setRunProgress({visible:true,label:algoLabel,epoch:0,total:epochTotal,estimatedMs});
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const onProgress=(p)=>setRunProgress({visible:true,label:algoLabel,epoch:p.epoch,total:p.total});
       const isHmoeRun=HMOE_ALGO_IDS.includes(algoId);
       const res=isHmoeRun
         ?runHmoe(augRows,cols,getHmoeBaseAlgoId(algoId),lossType,useGrad,extraP,ftrlP,selectedHmoeRegimes)
-        :runAlgo(augRows,cols,algoId,lossType,useGrad,extraP,ftrlP);
+        :await runAlgo(augRows,cols,algoId,lossType,useGrad,extraP,ftrlP,onProgress);
       const m=calcMetrics(res.predictions,evalRows);
       const modeStr=prodMode?"prod":expertMode==="old"?"classique":expertMode==="random"?"aléatoire":"manuel";
       const label=buildAlgoRunLabel(algoId,{lossType,useGrad,extraP:{...extraP},ftrlP:{...ftrlP},selectedHmoeRegimes:[...selectedHmoeRegimes]},modeStr);
-      const algoLabel=ALGOS.find(a=>a.id===algoId)?.name||algoId;
       const newRun={id:label,label,algoId,lossType,useGrad,extraP:{...extraP},ftrlP:{...ftrlP},executedAt:Date.now(),
         experts:cols,rows:evalRows,augRows,predictions:res.predictions,weightHistory:res.weightHistory,
         mae:m.mae,rmse:m.rmse,mape:m.mape,
@@ -730,8 +760,11 @@ export default function App(){
         return[...prev,newRun];
       });
       setVisibleRuns(prev=>{if(ctxChanged)return new Set([label]);return new Set([...prev,label]);});
-      setRunning(false);setTab("forecast");
-    },50);
+      setTab("forecast");
+    }finally{
+      setRunning(false);
+      setRunProgress({visible:false,label:"",epoch:0,total:0});
+    }
   };
 
   const handleGenerate=()=>{
@@ -1039,6 +1072,24 @@ export default function App(){
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif",background:THEME.appBg,minHeight:"100vh",color:THEME.textPrimary,display:"flex",flexDirection:"column"}}>
+      {runProgress.visible&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(14,45,82,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
+          <div style={{background:"#fff",borderRadius:18,padding:"32px 44px",minWidth:320,boxShadow:"0 12px 48px rgba(14,45,82,0.30)",textAlign:"center"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#E2001A",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Calcul en cours…</div>
+            <div style={{fontSize:17,fontWeight:700,color:"#0e2d52",marginBottom:18}}>{runProgress.label}</div>
+            {runProgress.total>0?(
+              <>
+                <div style={{background:"#f0f4fa",borderRadius:10,height:12,overflow:"hidden",marginBottom:10}}>
+                  <div style={{background:"#E2001A",height:"100%",borderRadius:10,width:`${Math.round(runProgress.epoch/runProgress.total*100)}%`,transition:"width 0.12s ease"}}/>
+                </div>
+                <div style={{fontSize:12,color:"#666"}}>Epoch {runProgress.epoch} / {runProgress.total} &nbsp;·&nbsp; <span style={{fontWeight:700,color:"#0e2d52"}}>{Math.round(runProgress.epoch/runProgress.total*100)}%</span></div>
+              </>
+            ):(
+              <div style={{fontSize:12,color:"#888"}}>Agrégation en cours…</div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{background:"#ffffff",borderBottom:"1px solid #d9e4f0",padding:"12px 20px",display:"flex",alignItems:"center",gap:92}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
@@ -1221,7 +1272,22 @@ export default function App(){
             {/* ── PROD MODE ── */}
             {prodMode&&(
               <div>
-                <div style={{fontSize:9,color:"#000",fontWeight:800,textTransform:"uppercase",marginBottom:6}}>Experts du CSV ({prodSelectedExperts.length}/{csvExpertCols.length} sélectionnés)</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{fontSize:9,color:"#000",fontWeight:800,textTransform:"uppercase"}}>Experts du CSV parsés ({prodSelectedExperts.length}/{csvExpertCols.length} sélectionnés)</div>
+                  {csvExpertCols.length>0&&(
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>setProdSelectedExperts([...csvExpertCols])}
+                        style={{fontSize:8.5,fontWeight:700,color:"#1d6fa8",background:"#e8f2fb",border:"1px solid #b8d0ec",borderRadius:4,padding:"2px 7px",cursor:"pointer"}}>
+                        Tout sélectionner
+                      </button>
+                      <button onClick={()=>setProdSelectedExperts(csvExpertCols.slice(0,2))}
+                        disabled={csvExpertCols.length<2}
+                        style={{fontSize:8.5,fontWeight:700,color:"#8b2a2a",background:"#fdecea",border:"1px solid #f0b8b8",borderRadius:4,padding:"2px 7px",cursor:"pointer"}}>
+                        Tout désélectionner
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {csvExpertCols.length===0&&<div style={{fontSize:10,color:THEME.textMuted}}>Chargez un CSV pour voir les experts.</div>}
                 <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:4}}>
                   {csvExpertCols.map((col,i)=>{
@@ -1386,6 +1452,9 @@ export default function App(){
               <div style={{borderTop:"1px solid rgba(255,255,255,0.25)",paddingTop:8,marginTop:4}}>
                 {curAlgo.params.map(p=>(
                   <div key={p.id} style={{marginBottom:8}}>
+                    {(p.id==="mlpEpochs"||p.id==="gruEpochs"||p.id==="lstmEpochs")&&(
+                      <div style={{fontSize:9,color:"#93c5fd",fontStyle:"italic",fontWeight:600,marginBottom:3}}>Algo d'optimisation : Batch GD (Adam)</div>
+                    )}
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                       <span style={{fontSize:10,color:"#fff"}}>{p.label}</span>
                       {p.type==="slider"&&<span style={{fontSize:10,color:"#fff",fontWeight:600}}>{getHmoeBaseAlgoId(algoId)==="FTRL"?(ftrlP[p.id]??p.default):(extraP[p.id]??p.default)}</span>}

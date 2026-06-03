@@ -5,7 +5,7 @@ import App from "./App";
 test("renders the app shell and aggregation controls", () => {
   render(<App />);
   expect(screen.getByText(/MoE Runner/i)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Opera BOA/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "MOE BOA" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /HMOE BOA/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Comparaison par simulation de Monte Carlo/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Monte Carlo Gridsearch par méthode/i })).toBeInTheDocument();
@@ -13,9 +13,9 @@ test("renders the app shell and aggregation controls", () => {
 test("shows Monte Carlo per-algorithm parameter sources", async () => {
   render(<App />);
 
-  await userEvent.click(screen.getByRole("button", { name: /Opera FTRL/i }));
+  await userEvent.click(screen.getByRole("button", { name: "MOE FTRL" }));
   await userEvent.click(screen.getByRole("button", { name: /Run/i }));
-  expect(await screen.findByRole("button", { name: /Export CSV/i })).toBeInTheDocument();
+  expect(await screen.findByText(/MAE \(MoE\)/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /Comparaison par simulation de Monte Carlo/i }));
 
   expect(screen.getAllByText(/Dernier run propre/i).length).toBeGreaterThan(0);

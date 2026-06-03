@@ -126,7 +126,7 @@ export async function runMonteCarloGridSearch({
       const combo = combos[comboIndex];
       await yieldToUi();
       throwIfAborted(signal);
-      const run = runAggregation(
+      const run = await runAggregation(
         augRows,
         expertColumns,
         algoId,

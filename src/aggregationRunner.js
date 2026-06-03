@@ -9,12 +9,14 @@ import {
   runSimpleMean,
   runTrimmedMean,
 } from "./aggregationMethods";
+import { runLinearStacking, runXGBoostStacking } from "./aggregationStacking";
+import { runMLPStacking, runGRUAggregator, runLSTMAggregator } from "./aggregationNeural";
 
 export function getHmoeBaseAlgoId(algoId) {
   return algoId.startsWith("HMOE_") ? algoId.replace("HMOE_", "") : algoId;
 }
 
-export function runAggregation(data, cols, algoId, lossType, useGrad, extraP, ftrlP, selectedHmoeRegimes) {
+export async function runAggregation(data, cols, algoId, lossType, useGrad, extraP, ftrlP, selectedHmoeRegimes) {
   if (HMOE_ALGO_IDS.includes(algoId)) {
     return runHmoe(
       data,
@@ -47,8 +49,18 @@ export function runAggregation(data, cols, algoId, lossType, useGrad, extraP, ft
       return runInvMSE(data, cols, extraP);
     case "BestExpert":
       return runBestExpert(data, cols, extraP);
+    case "LinearStacking":
+      return runLinearStacking(data, cols, extraP);
     case "Ridge":
       return runRidge(data, cols, extraP);
+    case "XGBoostStacking":
+      return runXGBoostStacking(data, cols, extraP);
+    case "MLPStacking":
+      return await runMLPStacking(data, cols, extraP);
+    case "GRU":
+      return await runGRUAggregator(data, cols, extraP);
+    case "LSTM":
+      return await runLSTMAggregator(data, cols, extraP);
     default:
       return runBOA(data, cols, lossType, useGrad);
   }
