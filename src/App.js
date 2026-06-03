@@ -92,15 +92,15 @@ const ALGO_GROUPS = [
     ]},
   ]},
   { label:"Stacking", algos:[
-    {id:"LinearStacking",name:"Linear Regression Stacking",desc:"Méta-modèle OLS appris sur 70% des données (sans fuite temporelle).",params:[]},
-    {id:"Ridge",name:"Ridge Regression Stacking",desc:"Combinaison linéaire régularisée L2 (entraîné sur l'intégralité des données).",params:[
+    {id:"LinearStacking",name:"Simple Linear Regression - Stacking",desc:"Méta-modèle OLS appris sur 70% des données (sans fuite temporelle).",params:[]},
+    {id:"Ridge",name:"Ridge Regression - Stacking",desc:"Combinaison linéaire régularisée L2 (entraîné sur l'intégralité des données).",params:[
       {id:"alpha",label:"Régularisation α",type:"slider",min:0.1,max:50,step:0.1,default:1},
     ]},
-    {id:"XGBoostStacking",name:"XGBoost Regressor Stacking",desc:"Gradient boosting de stumps appris sur 70% des données.",params:[
+    {id:"XGBoostStacking",name:"XGBoost Regressor - Stacking",desc:"Gradient boosting de stumps appris sur 70% des données.",params:[
       {id:"nTrees",label:"Nb arbres",type:"slider",min:10,max:200,step:10,default:50},
       {id:"xgbLr",label:"Learning rate",type:"slider",min:0.01,max:0.3,step:0.01,default:0.1},
     ]},
-    {id:"MLPStacking",name:"MLP Regressor Stacking",desc:"Petit réseau dense (Input→16→8→K softmax) apprenant les poids experts dynamiquement.",params:[
+    {id:"MLPStacking",name:"MLP Regressor - Stacking",desc:"Petit réseau dense (Input→16→8→K softmax) apprenant les poids experts dynamiquement.",params:[
       {id:"mlpEpochs",label:"Epoch",type:"slider",min:30,max:80,step:5,default:50},
     ]},
   ]},
@@ -125,11 +125,11 @@ const ALGO_GROUPS = [
     ]},
   ]},
   { label:"Temporal Neural Aggregation", algos:[
-    {id:"GRU",name:"GRU Aggregator",desc:"Réseau GRU capturant la mémoire temporelle pour produire des poids experts dynamiques.",params:[
+    {id:"GRU",name:"GRU",desc:"Réseau GRU capturant la mémoire temporelle pour produire des poids experts dynamiques.",params:[
       {id:"gruEpochs",label:"Epoch",type:"slider",min:5,max:80,step:5,default:30},
       {id:"gruSeqLen",label:"Longueur séquence",type:"slider",min:4,max:24,step:2,default:8},
     ]},
-    {id:"LSTM",name:"LSTM Aggregator",desc:"Réseau LSTM (H=16, cell+hidden state) capturant la mémoire temporelle longue pour produire des poids experts dynamiques.",params:[
+    {id:"LSTM",name:"LSTM",desc:"Réseau LSTM (H=16, cell+hidden state) capturant la mémoire temporelle longue pour produire des poids experts dynamiques.",params:[
       {id:"lstmEpochs",label:"Epoch",type:"slider",min:5,max:80,step:5,default:30},
       {id:"lstmSeqLen",label:"Longueur séquence",type:"slider",min:4,max:24,step:2,default:8},
     ]},
