@@ -218,6 +218,125 @@ function parseCSV(text){
   });
 }
 
+// \u2500\u2500\u2500 Incoming CSV normalizer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Accepts column name variants and timestamp formats from external sources,
+// converting them to the canonical names the engine expects.
+// All existing canonical formats remain untouched.
+
+function _nk(s){return s.toLowerCase().replace(/[^a-z0-9]/g,"");}
+
+const _CANONICAL_ALIASES={
+  target_time:["dateheure","datetime","timestamp","datehour"],
+  decision_time:["decisiontime","decisionheure"],
+};
+
+function _normalizeTimestamp(ts){
+  if(!ts)return ts;
+  // Strip sub-second precision before timezone: .000000+0000 \u2192 +0000
+  let s=ts.replace(/\.\d+(?=[+-Z]|$)/,"");
+  // Compact offset without colon: +0000 \u2192 +00:00
+  s=s.replace(/([+-])(\d{2})(\d{2})$/,"$1$2:$3");
+  return s;
+}
+
+function normalizeIncomingRows(rows){
+  if(!rows.length)return rows;
+  const headers=Object.keys(rows[0]);
+
+  // Build rename map only for columns not already present in canonical form
+  const renameMap={};
+  for(const [canonical,aliases] of Object.entries(_CANONICAL_ALIASES)){
+    if(headers.some(h=>h===canonical))continue;
+    const match=headers.find(h=>aliases.includes(_nk(h)));
+    if(match)renameMap[match]=canonical;
+  }
+
+  // Detect Wind_Speed \u2192 wind_norm (only if wind_norm not already present)
+  const hasWindNorm=headers.some(h=>_nk(h)==="windnorm");
+  const windCol=!hasWindNorm?headers.find(h=>_nk(h)==="windspeed"):null;
+
+  let windMin=Infinity,windMax=-Infinity;
+  if(windCol){
+    for(const row of rows){
+      const v=parseFloat(row[windCol]);
+      if(isFinite(v)){windMin=Math.min(windMin,v);windMax=Math.max(windMax,v);}
+    }
+  }
+  const windRange=windMax-windMin;
+
+  if(!Object.keys(renameMap).length&&!windCol)return rows;
+
+  return rows.map(row=>{
+    const newRow={};
+    for(const [key,val] of Object.entries(row)){
+      if(key===windCol)continue;
+      const newKey=renameMap[key]||key;
+      newRow[newKey]=(newKey==="target_time"||newKey==="decision_time")
+        ?_normalizeTimestamp(val)
+        :val;
+    }
+    if(windCol){
+      const v=parseFloat(row[windCol]);
+      newRow.wind_norm=isFinite(v)&&windRange>1e-8?(v-windMin)/windRange:0;
+    }
+    return newRow;
+  });
+}
+
+// ─── Time-gap filler ─────────────────────────────────────────────────────────
+// Detects the dominant time step in the data, then linearly interpolates any
+// missing slots so the engine always receives a contiguous hourly series.
+
+function fillTimeGaps(rows){
+  if(rows.length<2)return{rows,filled:0};
+
+  const tagged=rows.map(r=>({row:r,ms:new Date(r.target_time).getTime()}));
+  const valid=tagged.filter(x=>isFinite(x.ms));
+  if(valid.length<2)return{rows,filled:0};
+
+  valid.sort((a,b)=>a.ms-b.ms);
+
+  // Dominant step = smallest positive diff (guards against duplicates)
+  const diffs=[];
+  for(let i=1;i<valid.length;i++){const d=valid[i].ms-valid[i-1].ms;if(d>0)diffs.push(d);}
+  if(!diffs.length)return{rows:valid.map(x=>x.row),filled:0};
+  diffs.sort((a,b)=>a-b);
+  const stepMs=diffs[0];
+
+  if(!diffs.some(d=>d>stepMs*1.5))return{rows:valid.map(x=>x.row),filled:0};
+
+  const numKeys=Object.keys(valid[0].row).filter(k=>{
+    if(k==="target_time"||k==="decision_time")return false;
+    return isFinite(parseFloat(valid[0].row[k]));
+  });
+
+  const out=[valid[0].row];
+  let filled=0;
+
+  for(let i=1;i<valid.length;i++){
+    const prev=valid[i-1],curr=valid[i];
+    const nSteps=Math.round((curr.ms-prev.ms)/stepMs);
+    if(nSteps>1){
+      for(let j=1;j<nSteps;j++){
+        const t=prev.ms+j*stepMs;
+        const alpha=j/nSteps;
+        const synth={...prev.row};
+        synth.target_time=new Date(t).toISOString().replace(/\.\d{3}Z$/,"+00:00");
+        delete synth.decision_time;
+        for(const k of numKeys){
+          const a=parseFloat(prev.row[k])||0,b=parseFloat(curr.row[k])||0;
+          synth[k]=String(a+(b-a)*alpha);
+        }
+        out.push(synth);
+        filled++;
+      }
+    }
+    out.push(curr.row);
+  }
+
+  return{rows:out,filled};
+}
+
 const DEMO_CSV=`decision_time,target_time,horizon,y_true,ridge_full,elasticnet_full,rf_full,lgbm_full,short_horizon_specialist,long_horizon_specialist,late_vector_specialist,strong_wind_specialist,low_wind_specialist,gusty_regime_specialist,stable_wind_specialist,night_specialist,day_specialist,winter_specialist,summer_specialist,wind_only_expert,history_horizon_expert,no_lag_expert,no_cloud_pressure_expert,rf_drift_down_after_midpoint,lgbm_drift_up_after_midpoint,ridge_break_after_date,lgbm_peak_underestimator,ridge_smoother,rf_slow_reactor,low_value_overestimator,ridge_biased_low,rf_biased_high,lgbm_amplitude_compressed,elasticnet_additive_bias
 2025-02-09 10:00:00+00:00,2025-02-10 00:00:00+00:00,14,930.13,1005.63,1003.01,919.37,765.42,862.46,1097.48,1022.73,1869.06,215.61,906.50,923.29,774.24,1230.97,923.29,923.29,784.82,762.54,800.05,925.54,919.37,727.15,1005.63,765.42,974.41,919.37,919.37,905.07,1011.31,775.77,1053.01
 2025-02-09 10:00:00+00:00,2025-02-10 01:00:00+00:00,15,977.59,928.23,925.94,964.43,896.54,886.25,1135.72,1017.71,1893.78,239.42,794.72,962.04,775.54,1198.50,962.04,962.04,786.92,1292.84,796.51,957.11,964.43,851.72,928.23,896.54,1015.39,932.89,964.43,835.41,1060.88,887.22,975.94
@@ -657,10 +776,15 @@ export default function App(){
   useEffect(()=>()=>{monteCarloAbortRef.current?.abort();gridSearchAbortRef.current?.abort();},[]);
   useEffect(()=>{if(csvExpertCols.length)setProdSelectedExperts([...csvExpertCols]);},[csvExpertCols]);
 
-  function loadRows(rows){
+  function loadRows(rows,nameOverride){
     monteCarloAbortRef.current?.abort();
     gridSearchAbortRef.current?.abort();
-    const parsed=ensureHmoeFeatures(rows.map(r=>{
+    const rows2=normalizeIncomingRows(rows);
+    const{rows:rows3,filled}=fillTimeGaps(rows2);
+    if(filled>0&&nameOverride!==undefined){
+      setFileName(prev=>`${nameOverride} (${filled} trou${filled>1?"x":""} comblé${filled>1?"s":""})`);
+    }
+    const parsed=ensureHmoeFeatures(rows3.map(r=>{
       const o={...r};
       Object.keys(r).forEach(k=>{
         if(k!=="decision_time"&&k!=="target_time"){const v=parseFloat(String(r[k]).replace(/\s/g,""));o[k]=isNaN(v)?0:v;}
@@ -676,7 +800,7 @@ export default function App(){
   const handleFile=e=>{
     const f=e.target.files[0];if(!f)return;
     setFileName(f.name);
-    const r=new FileReader();r.onload=ev=>loadRows(parseCSV(ev.target.result));r.readAsText(f);
+    const r=new FileReader();r.onload=ev=>loadRows(parseCSV(ev.target.result),f.name);r.readAsText(f);
   };
 
   const norm=t=>(t||"").replace("+00:00","").replace(" ","T").slice(0,16);
