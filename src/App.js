@@ -253,7 +253,7 @@ function normalizeIncomingRows(rows){
 
   // Detect Wind_Speed \u2192 wind_norm (only if wind_norm not already present)
   const hasWindNorm=headers.some(h=>_nk(h)==="windnorm");
-  const windCol=!hasWindNorm?headers.find(h=>_nk(h)==="windspeed"):null;
+  const windCol=!hasWindNorm?headers.find(h=>_nk(h)==="windspeed"||_nk(h)==="windspeedmean"):null;
 
   let windMin=Infinity,windMax=-Infinity;
   if(windCol){
