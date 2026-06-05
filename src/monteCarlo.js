@@ -148,7 +148,7 @@ export async function runMonteCarloSimulation({
         algoConfig.ftrlP,
         algoConfig.selectedHmoeRegimes,
       );
-      const metrics = calcMetrics(run.predictions, rows);
+      const metrics = calcMetrics(run.predictions.slice(-24), rows.slice(-24));
       if (!aggregates[algoId]) {
         aggregates[algoId] = {
           id: algoId,

@@ -92,7 +92,7 @@ const ALGO_GROUPS = [
     ]},
   ]},
   { label:"Stacking", algos:[
-    {id:"LinearStacking",name:"Simple Linear Regression - Stacking",desc:"Méta-modèle OLS appris sur 70% des données (sans fuite temporelle).",params:[]},
+    {id:"LinearStacking",name:"Simple Linear Regression - Stacking",desc:"Méta-modèle OLS appris sur l'intégralité des données ; produit des poids fixes constants (même approche que Ridge).",params:[]},
     {id:"Ridge",name:"Ridge Regression - Stacking",desc:"Combinaison linéaire régularisée L2 (entraîné sur l'intégralité des données).",params:[
       {id:"alpha",label:"Régularisation α",type:"slider",min:0.1,max:50,step:0.1,default:1},
     ]},
@@ -100,7 +100,7 @@ const ALGO_GROUPS = [
       {id:"nTrees",label:"Nb arbres",type:"slider",min:10,max:200,step:10,default:50},
       {id:"xgbLr",label:"Learning rate",type:"slider",min:0.01,max:0.3,step:0.01,default:0.1},
     ]},
-    {id:"MLPStacking",name:"MLP Regressor - Stacking",desc:"Petit réseau dense (Input→16→8→K softmax) apprenant les poids experts dynamiquement.",params:[
+    {id:"MLPStacking",name:"MLP Regressor - Stacking",desc:"Réseau dense (Input→16→8→K softmax) entraîné sur l'intégralité des données ; les poids softmax sont moyennés et appliqués de façon constante (même approche que Ridge).",params:[
       {id:"mlpEpochs",label:"Epoch",type:"slider",min:30,max:80,step:5,default:50},
     ]},
   ]},
@@ -158,9 +158,9 @@ function solveLinear(A,b){const n=b.length,M=A.map((row,i)=>[...row,b[i]]);for(l
 function runSimpleMean(data,cols){const K=cols.length;return{predictions:data.map(r=>cols.reduce((s,c)=>s+(r[c]||0),0)/K),weightHistory:data.map(()=>new Array(K).fill(1/K))};}
 function runMedian(data,cols){const K=cols.length,preds=[],wh=[];for(let t=0;t<data.length;t++){const vals=cols.map(c=>data[t][c]||0),sorted=[...vals].sort((a,b)=>a-b);const med=K%2===0?(sorted[K/2-1]+sorted[K/2])/2:sorted[Math.floor(K/2)];const dists=vals.map(v=>Math.abs(v-med)+1e-8);preds.push(med);wh.push(vnorm(dists.map(d=>1/d)));}return{predictions:preds,weightHistory:wh};}
 function runTrimmedMean(data,cols,params){const K=cols.length;const raw=Math.floor(K*(params.trim||20)/100/2);const nT=params.trim>0&&K>=3?Math.min(Math.max(1,raw),Math.floor((K-1)/2)):raw;const preds=[],wh=[];for(let t=0;t<data.length;t++){const vals=cols.map(c=>data[t][c]||0);const idxSorted=vals.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v);const kept=idxSorted.slice(nT,K-nT);const pred=kept.reduce((s,x)=>s+x.v,0)/kept.length;const w=new Array(K).fill(0);kept.forEach(x=>{w[x.i]=1/kept.length;});preds.push(pred);wh.push(w);}return{predictions:preds,weightHistory:wh};}
-function runInvMSE(data,cols,params){const K=cols.length,win=params.window||48,preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let w;if(t<2){w=new Array(K).fill(1/K);}else{const sl=data.slice(Math.max(0,t-win),t);const mses=cols.map(c=>{const e=sl.map(r=>(r[c]||0)-r.y_true);return e.reduce((s,v)=>s+v**2,0)/sl.length+1e-6;});w=vnorm(mses.map(m=>1/m));}preds.push(w.reduce((s,wk,k)=>s+wk*x[k],0));wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
-function runBestExpert(data,cols,params){const K=cols.length,win=params.window||48,preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let bi=0;if(t>=2){const sl=data.slice(Math.max(0,t-win),t);const maes=cols.map(c=>{const e=sl.map(r=>Math.abs((r[c]||0)-r.y_true));return e.reduce((s,v)=>s+v,0)/sl.length;});bi=maes.indexOf(Math.min(...maes));}const w=new Array(K).fill(0);w[bi]=1;preds.push(x[bi]);wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
-function runRidge(data,cols,params){const K=cols.length,alpha=params.alpha||1;const X=data.map(r=>cols.map(c=>r[c]||0)),y=data.map(r=>r.y_true);const XtX=Array.from({length:K},(_,i)=>Array.from({length:K},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)+(i===j?alpha:0)));const Xty=Array.from({length:K},(_,i)=>X.reduce((s,row,t)=>s+row[i]*y[t],0));const wR=solveLinear(XtX,Xty);const wD=vnorm(wR.map(Math.abs));return{predictions:X.map(row=>row.reduce((s,v,k)=>s+v*wR[k],0)),weightHistory:data.map(()=>[...wD])};}
+function runInvMSE(data,cols,params){const K=cols.length,win=params.window||48,testStart=Math.max(1,data.length-24),preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let w;if(t<2){w=new Array(K).fill(1/K);}else{const wEnd=Math.min(t,testStart);const sl=data.slice(Math.max(0,wEnd-win),wEnd);const mses=cols.map(c=>{const e=sl.map(r=>(r[c]||0)-r.y_true);return e.reduce((s,v)=>s+v**2,0)/sl.length+1e-6;});w=vnorm(mses.map(m=>1/m));}preds.push(w.reduce((s,wk,k)=>s+wk*x[k],0));wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
+function runBestExpert(data,cols,params){const K=cols.length,win=params.window||48,testStart=Math.max(1,data.length-24),preds=[],wh=[];for(let t=0;t<data.length;t++){const x=cols.map(c=>data[t][c]||0);let bi=0;if(t>=2){const wEnd=Math.min(t,testStart);const sl=data.slice(Math.max(0,wEnd-win),wEnd);const maes=cols.map(c=>{const e=sl.map(r=>Math.abs((r[c]||0)-r.y_true));return e.reduce((s,v)=>s+v,0)/sl.length;});bi=maes.indexOf(Math.min(...maes));}const w=new Array(K).fill(0);w[bi]=1;preds.push(x[bi]);wh.push([...w]);}return{predictions:preds,weightHistory:wh};}
+function runRidge(data,cols,params){const K=cols.length,alpha=params.alpha||1;const X=data.map(r=>cols.map(c=>r[c]||0)),y=data.map(r=>r.y_true);const n=X.length;const trainEnd=Math.max(K+2,n-24);const Xt=X.slice(0,trainEnd),yt=y.slice(0,trainEnd);const xStd=Array.from({length:K},(_,k)=>{const m=Xt.reduce((s,row)=>s+row[k],0)/trainEnd;return Math.sqrt(Xt.reduce((s,row)=>s+(row[k]-m)**2,0)/trainEnd+1e-8);});const Xts=Xt.map(row=>row.map((v,k)=>v/xStd[k]));const XtX=Array.from({length:K},(_,i)=>Array.from({length:K},(_,j)=>Xts.reduce((s,row)=>s+row[i]*row[j],0)+(i===j?alpha:0)));const Xty=Array.from({length:K},(_,i)=>Xts.reduce((s,row,t)=>s+row[i]*yt[t],0));const wS=solveLinear(XtX,Xty);const wR=wS.map((w,k)=>w/xStd[k]);const wD=vnorm(wR.map(Math.abs));return{predictions:X.map(row=>row.reduce((s,v,k)=>s+v*wR[k],0)),weightHistory:data.map(()=>[...wD])};}
 async function runAlgo(data,cols,algoId,lt,ug,ep,fp,onProgress){switch(algoId){case"BOA":return runBOA(data,cols,lt,ug);case"MLpol":return runMLpol(data,cols,lt,ug);case"MLprod":return runMLprod(data,cols,lt,ug);case"FTRL":return runFTRL(data,cols,lt,ug,fp);case"SimpleMean":return runSimpleMean(data,cols);case"Median":return runMedian(data,cols);case"TrimmedMean":return runTrimmedMean(data,cols,ep);case"InvMSE":return runInvMSE(data,cols,ep);case"BestExpert":return runBestExpert(data,cols,ep);case"LinearStacking":return runLinearStacking(data,cols,ep);case"Ridge":return runRidge(data,cols,ep);case"XGBoostStacking":return runXGBoostStacking(data,cols,ep);case"MLPStacking":return await runMLPStacking(data,cols,ep,onProgress);case"GRU":return await runGRUAggregator(data,cols,ep,onProgress);case"LSTM":return await runLSTMAggregator(data,cols,ep,onProgress);default:return runBOA(data,cols,lt,ug);}}
 function getHmoeBaseAlgoId(algoId){return algoId.startsWith("HMOE_")?algoId.replace("HMOE_",""):algoId;}
 
@@ -593,7 +593,7 @@ function TT({text,children}){
     </div>
   );
 }
-function Section({title,children,titleColor,titleStyle={}}){return(<div style={{marginBottom:16}}><div style={{fontSize:9,fontWeight:700,color:titleColor||THEME.textDim,textTransform:"uppercase",letterSpacing:1,marginBottom:7,...titleStyle}}>{title}</div>{children}</div>);}
+function Section({title,children,titleColor,titleStyle={},titleExtra}){return(<div style={{marginBottom:16}}><div style={{fontSize:9,fontWeight:700,color:titleColor||THEME.textDim,textTransform:"uppercase",letterSpacing:1,marginBottom:7,...titleStyle,display:"flex",alignItems:"center",gap:5}}>{title}{titleExtra}</div>{children}</div>);}
 function csvDownload(rows,filename){if(!rows||!rows.length)return;const keys=Object.keys(rows[0]);const lines=[keys.join(","),...rows.map(r=>keys.map(k=>{const v=r[k];return typeof v==="string"&&v.includes(",")? `"${v}"`:v??""}).join(","))];const blob=new Blob([lines.join("\n")],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();}
 function ExportBtn({onClick}){return(<button onClick={e=>{e.stopPropagation();onClick();}} title="Exporter les données" style={{background:"none",border:"1.5px solid #166534",borderRadius:6,padding:"2px 7px",fontSize:10,color:"#166534",cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",gap:3}}><span>⬇</span><span>CSV</span></button>);}
 function Card({title,children,style={},onExport}){return(<div style={{background:"#a8a8a8",borderRadius:12,padding:18,border:`1px solid ${THEME.border}`,...style}}>{title&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div style={{fontWeight:700,fontSize:13,color:"#000"}}>{title}</div>{onExport&&<ExportBtn onClick={onExport}/>}</div>}{children}</div>);}
@@ -738,6 +738,7 @@ export default function App(){
   const [useGrad,setUseGrad]=useState(DEFAULT_USE_GRAD);
   const [ftrlP,setFtrlP]=useState(()=>({...DEFAULT_FTRL_PARAMS}));
   const [extraP,setExtraP]=useState(()=>({...DEFAULT_EXTRA_PARAMS}));
+  const [showAlgoInfo,setShowAlgoInfo]=useState(false);
   const [showCsvInfo,setShowCsvInfo]=useState(false);
   const [showTutorial,setShowTutorial]=useState(false);
   const [prodMode,setProdMode]=useState(false);
@@ -866,7 +867,7 @@ export default function App(){
       const res=isHmoeRun
         ?runHmoe(augRows,cols,getHmoeBaseAlgoId(algoId),lossType,useGrad,extraP,ftrlP,selectedHmoeRegimes)
         :await runAlgo(augRows,cols,algoId,lossType,useGrad,extraP,ftrlP,onProgress);
-      const m=calcMetrics(res.predictions,evalRows);
+      const m=calcMetrics(res.predictions.slice(-24),evalRows.slice(-24));
       const modeStr=prodMode?"prod":expertMode==="old"?"classique":expertMode==="random"?"aléatoire":"manuel";
       const label=buildAlgoRunLabel(algoId,{lossType,useGrad,extraP:{...extraP},ftrlP:{...ftrlP},selectedHmoeRegimes:[...selectedHmoeRegimes]},modeStr);
       const newRun={id:label,label,algoId,lossType,useGrad,extraP:{...extraP},ftrlP:{...ftrlP},executedAt:Date.now(),
@@ -932,12 +933,13 @@ export default function App(){
   });
 
   const metrics=!results?null:(()=>{
-    const rows=results.rows,preds=results.predictions,n=rows.length;
+    const rows=results.rows.slice(-24),preds=results.predictions.slice(-24),n=rows.length;
+    const augRows=results.augRows.slice(-24);
     const mae=preds.reduce((s,p,i)=>s+Math.abs(p-rows[i].y_true),0)/n;
     const rmse=Math.sqrt(preds.reduce((s,p,i)=>s+(p-rows[i].y_true)**2,0)/n);
     const mape=preds.reduce((s,p,i)=>s+Math.abs(p-rows[i].y_true)/(Math.abs(rows[i].y_true)+1),0)/n*100;
     const expertMetrics=results.experts.map(e=>{
-      const errs=rows.map((r,i)=>results.augRows[i][e]-r.y_true);
+      const errs=rows.map((r,i)=>augRows[i][e]-r.y_true);
       return{name:e,mae:(errs.reduce((s,v)=>s+Math.abs(v),0)/n).toFixed(0),rmse:Math.sqrt(errs.reduce((s,v)=>s+v**2,0)/n).toFixed(0)};
     });
     return{mae:mae.toFixed(0),rmse:rmse.toFixed(0),mape:mape.toFixed(2),n,expertMetrics};
@@ -1259,6 +1261,185 @@ export default function App(){
             </div>
             <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/>
           </div>
+          {showAlgoInfo&&(
+            <div onClick={()=>setShowAlgoInfo(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"28px 32px",maxWidth:720,width:"92%",maxHeight:"88vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.3)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                  <div style={{fontSize:15,fontWeight:800,color:"#0e2d52"}}>Algorithmes d'agregation - Protocole &amp; Resultats</div>
+                  <button onClick={()=>setShowAlgoInfo(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#666",lineHeight:1}}>x</button>
+                </div>
+
+                {/* Familles */}
+                <div style={{fontSize:11,fontWeight:700,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Familles d'algorithmes</div>
+
+                {[
+                  {
+                    famille:"Sans entrainement (statiques)",
+                    desc:"Aucun apprentissage ni historique. Les poids sont calcules a chaque pas uniquement depuis les valeurs des experts au temps t.",
+                    couleur:"#6b7280",
+                    bg:"#f9fafb",
+                    border:"#d1d5db",
+                    algos:[
+                      {nom:"Moyenne simple",desc:"Moyenne arithmetique non ponderee des K experts a chaque pas de temps. Aucun parametre, aucun apprentissage - sert de baseline minimale."},
+                      {nom:"Mediane",desc:"Mediane des K predictions, robuste aux valeurs aberrantes. Poids implicites proportionnels a l'inverse de la distance a la mediane."},
+                      {nom:"Trimmed Mean",desc:"Moyenne apres exclusion des X% d'experts extremes (haut et bas). Compromis entre robustesse de la mediane et stabilite de la moyenne."},
+                    ]
+                  },
+                  {
+                    famille:"Adaptatifs - fenetre glissante (gel a N-24)",
+                    desc:"Poids recalcules a chaque pas depuis les erreurs sur une fenetre glissante. La fenetre est gelee a N-24 : les 24 dernieres predictions utilisent les poids issus de la derniere fenetre d'entrainement.",
+                    couleur:"#0e7490",
+                    bg:"#ecfeff",
+                    border:"#a5f3fc",
+                    algos:[
+                      {nom:"InvMSE",desc:"A chaque pas t, calcule le MSE de chaque expert sur la fenetre [t-win, t[, puis pondere par l'inverse : wₖ ∝ 1/MSEₖ. Reaction lente et stable aux changements de qualite."},
+                      {nom:"BestExpert",desc:"Selectionne l'expert avec la plus faible MAE sur la fenetre [t-win, t[ et lui attribue un poids de 1 (winner-take-all). Tres reactif, performant quand un expert domine localement."},
+                    ]
+                  },
+                  {
+                    famille:"Offline - entrainement sur [0, N-24], reseau gele",
+                    desc:[
+                      "Pour les methodes de stacking : entrainement batch sur toute la sequence sauf les 24 dernieres obs - sauf XGBoost qui est plafonne a 70% car le gradient boosting sur peu de features (K=3) est sujet a l'overfitting : reduire le train agit comme regularisation implicite, contrairement aux methodes lineaires (OLS, Ridge) dont la solution est unique et lisse. A l'issue, le modele est gele et ne dispose que de 3 poids fixes appliques tels quels pour predire les 24 obs test. Pour une mise a jour, il faudrait re-entrainer sur un dataset incluant 24 nouvelles observations.",
+                      "Pour GRU/LSTM specifiquement : entraines une fois en batch par Adam sur les 70% premiers de la serie (plafonne a N-24), puis reseau gele. A l'inference, ils appliquent simplement le reseau fige sur une fenetre glissante de predictions experts - pas de mise a jour des poids. Les poids produits varient dans le temps (le reseau repond differemment selon les sequences en entree), mais c'est la reponse d'un modele fige, pas un apprentissage en ligne. C'est comme XGBoost qui predit des valeurs differentes pour chaque ligne sans jamais se re-entrainer. Attention : le graphique Poids dynamiques pour ces methodes montre une retro-application sur l'historique - ce ne sont donc pas des poids online qui auraient ete geles. Regarder ce graphique n'a donc pas vraiment de sens pour ces methodes.",
+                    ],
+                    couleur:"#7c3aed",
+                    bg:"#f5f3ff",
+                    border:"#c4b5fd",
+                    sousgroupes:[
+                      {
+                        label:"Stacking de modeles ayant pour tache la regression multi-output (3) - poids fixes constants",
+                        algos:[
+                          {nom:"Linear Stacking (OLS)",desc:"Minimise ‖Xw - y‖² par moindres carres ordinaires sur le train. Produit K poids fixes constants appliques uniformement sur toute la serie."},
+                          {nom:"Ridge Regression",desc:"OLS regularise L2 : minimise ‖Xw - y‖² + α·‖w‖². Features standardisees avant resolution pour que α soit invariant a l'echelle des predictions."},
+                          {nom:"XGBoost Stacking",desc:"Ensemble de stumps (arbres profondeur 1) entraine par gradient boosting sur predictions experts + features de regimes. Predit directement y sans poids interpreters. Entraine sur min(70%, N-24)."},
+                          {nom:"MLP Stacking",desc:"Reseau dense K → 16 → 8 → K avec sortie softmax. Les poids softmax sont moyennes sur le train pour produire un vecteur fixe de K poids constants."},
+                        ]
+                      },
+                      {
+                        label:"Neural temporal - poids dynamiques, reseau gele",
+                        algos:[
+                          {nom:"GRU",desc:"Reseau recurrent GRU (H=8) entraine en batch sur des fenetres glissantes de longueur seq. A l'inference, le reseau gele produit des poids experts differents a chaque pas selon la sequence en entree - dynamique mais pas online."},
+                          {nom:"LSTM",desc:"Meme pipeline que GRU avec un LSTM (H=16, cell + hidden state). La separation memoire court / long terme permet de capturer des dependances temporelles plus longues. Reseau gele a l'inference."},
+                        ]
+                      },
+                    ]
+                  },
+                  {
+                    famille:"Online - Opera (adaptation sequentielle, gel a N-24)",
+                    desc:"Adaptation pas a pas sur [0, N-24) : poids mis a jour apres chaque observation via y_true. A N-24, le vecteur de poids courant est gele et applique uniformement aux 24 obs test.",
+                    couleur:"#b45309",
+                    bg:"#fffbeb",
+                    border:"#fcd34d",
+                    sousgroupes:[
+                      {
+                        label:"Opera classique",
+                        algos:[
+                          {nom:"BOA (Bernstein Online Aggregation)",desc:"Taux d'apprentissage adaptatif : lrₖ = min(1/Bₖ, √(log K / Cₖ)), ou Bₖ borne le regret et Cₖ cumule les pertes carrees. Garantie de regret en O(√(T·log K))."},
+                          {nom:"MLpol (Multiplicative Weights Polynomial)",desc:"Poids proportionnels aux regrets cumulatifs positifs pondered par un taux poly-adaptatif. Tres competitif en pratique sur des pertes a variance variable."},
+                          {nom:"MLprod (Multiplicative Weights Product)",desc:"Mise a jour multiplicative : wₖ(t+1) ∝ lrₖ·exp(regret cumulatif k). Mieux calibre pour les pertes bornees, convergence plus stable que MLpol sur series stationnaires."},
+                          {nom:"FTRL (Follow The Regularized Leader)",desc:"Descente de gradient projetee sur le simplexe avec η₀ fixe. Moins robuste que BOA/MLpol car η₀ doit etre regle manuellement selon la variance des experts."},
+                        ]
+                      },
+                      {
+                        label:"Opera + regimes (HMOE)",
+                        algos:[
+                          {nom:"HMOE-BOA / MLpol / MLprod / FTRL",desc:"Pour chaque regime selectionne (Jour/Nuit, Vent, Haut/Bas, Volatilite, Tendance), une gate binaire apprend a router entre deux branches Opera specialisees. Prediction finale = moyenne ponderee par les probabilites de gate sur tous les regimes actifs. Permet d'adapter les poids experts au contexte operationnel."},
+                        ]
+                      },
+                    ]
+                  },
+                ].map(({famille,desc,couleur,bg,border,algos,sousgroupes})=>(
+                  <div key={famille} style={{marginBottom:14,border:`1px solid ${border}`,borderRadius:10,overflow:"hidden"}}>
+                    <div style={{background:bg,borderBottom:`1px solid ${border}`,padding:"8px 14px"}}>
+                      <div style={{fontSize:10,fontWeight:800,color:couleur,textTransform:"uppercase",letterSpacing:0.5,marginBottom:desc?3:0}}>{famille}</div>
+                      {desc&&(Array.isArray(desc)?desc.map((d,i)=>(
+                        <div key={i} style={{fontSize:10,color:couleur,fontStyle:"italic",opacity:0.85,lineHeight:1.4,marginBottom:i<desc.length-1?4:0,paddingLeft:10,position:"relative"}}>
+                          <span style={{position:"absolute",left:0}}>•</span>{d}
+                        </div>
+                      )):<div style={{fontSize:10,color:couleur,fontStyle:"italic",opacity:0.85,lineHeight:1.4}}>{desc}</div>)}
+                    </div>
+                    <div style={{padding:"8px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                      {sousgroupes ? sousgroupes.map(({label,desc:sdesc,algos:sa})=>(
+                        <div key={label}>
+                          <div style={{fontSize:9,fontWeight:800,color:couleur,textTransform:"uppercase",letterSpacing:0.5,marginBottom:sdesc?2:4,marginTop:4,paddingBottom:sdesc?0:3,borderBottom:sdesc?undefined:`1px solid ${border}`}}>{label}</div>
+                          {sdesc&&<div style={{fontSize:10,color:couleur,fontStyle:"italic",opacity:0.85,lineHeight:1.4,marginBottom:4,paddingBottom:3,borderBottom:`1px solid ${border}`}}>{sdesc}</div>}
+                          {sa.map(({nom,desc})=>(
+                            <div key={nom} style={{fontSize:11,lineHeight:1.5,marginBottom:4}}>
+                              <span style={{fontWeight:700,color:"#1e3a5f"}}>{nom} - </span><span style={{color:"#374151"}}>{desc}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )) : algos.map(({nom,desc})=>(
+                        <div key={nom} style={{fontSize:11,lineHeight:1.5}}>
+                          <span style={{fontWeight:700,color:"#1e3a5f"}}>{nom} - </span><span style={{color:"#374151"}}>{desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Protocole anti-leakage */}
+                <div style={{fontSize:11,fontWeight:700,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8,marginTop:4}}>Protocole anti-leakage - holdout 24 dernieres observations</div>
+                <div style={{background:"#f4f7fb",borderRadius:8,padding:"12px 14px",marginBottom:12,fontSize:11,lineHeight:1.7}}>
+                  <div style={{marginBottom:4,color:"#555",fontStyle:"italic",fontSize:10}}>(N = nombre total d'observations du dataset)</div>
+                  <div style={{marginBottom:8,color:"#333"}}>Les 24 dernieres observations sont reservees comme periode de test pour toutes les methodes. Aucune methode ne voit <code style={{background:"#e0e7f0",borderRadius:3,padding:"1px 4px"}}>y_true</code> de cette periode pendant l'entrainement ou l'adaptation.</div>
+                  <div style={{fontWeight:700,color:"#0e2d52",marginBottom:3}}>Statiques (Moyenne, Mediane, TrimmedMean)</div>
+                  <div style={{color:"#333",marginBottom:8}}>Aucun apprentissage, aucun historique utilise - pas de leakage possible par construction.</div>
+                  <div style={{fontWeight:700,color:"#0e2d52",marginBottom:3}}>Adaptatifs (InvMSE, BestExpert)</div>
+                  <div style={{color:"#333",marginBottom:8}}>Fenetre capee a N-24 : <code style={{background:"#e0e7f0",borderRadius:3,padding:"1px 4px"}}>windowEnd = min(t, N-24)</code> - la fenetre ne glisse plus dans la zone test.</div>
+                  <div style={{fontWeight:700,color:"#0e2d52",marginBottom:6}}>Offline - trainEnd</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:10}}>
+                    {[
+                      ["Simple Linear Regression - Stacking","N-24"],["Ridge Regression - Stacking","N-24 + scaling"],["XGBoost Regressor - Stacking","min(70%, N-24)"],
+                      ["MLP Regressor - Stacking","N-24, scaler sur train"],["GRU / LSTM","min(70%, N-24)"],
+                    ].map(([m,v])=>(
+                      <div key={m} style={{background:"#e8eef7",borderRadius:5,padding:"4px 8px",display:"flex",justifyContent:"space-between",gap:8}}>
+                        <span style={{fontWeight:600,color:"#0e2d52"}}>{m}</span><span style={{color:"#1e5fcc"}}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontWeight:700,color:"#0e2d52",marginBottom:3,marginTop:8}}>Online (Opera + HMOE)</div>
+                  <div style={{color:"#333",marginBottom:4}}>Boucle scindee : adaptation sur [0, N-24), puis poids geles depuis l'etat final, appliques uniformement sur les 24 derniers pas. Pour HMOE, <code style={{background:"#e0e7f0",borderRadius:3,padding:"1px 4px"}}>model.update()</code> et <code style={{background:"#e0e7f0",borderRadius:3,padding:"1px 4px"}}>gate.update()</code> sont desactives sur le test.</div>
+                </div>
+                <div style={{background:"#eaf4ee",border:"1px solid #a3d9b1",borderRadius:8,padding:"10px 14px",marginBottom:18,fontSize:11,color:"#1a5c2a",lineHeight:1.6}}>
+                  <div style={{fontWeight:700,marginBottom:4}}>Metriques et classement - identique sur les 3 pages</div>
+                  <div style={{marginBottom:6}}>MAE, RMSE et MAPE sont calcules uniquement sur les 24 dernieres observations, pour les 3 pages : <em>Comparaison simple des methodes</em>, <em>Monte Carlo</em> (moyenne sur N simulations independantes) et <em>Grid Search MC</em> (idem par configuration d'hyperparametres).</div>
+                  <div style={{marginBottom:6}}>Le classement general est la moyenne des rangs obtenus sur chacune des 3 metriques : une methode 1re en MAE, 3e en RMSE et 2e en MAPE obtient un score moyen de (1+3+2)/3 = 2.</div>
+                  <div>Ce protocole garantit la comparabilite entre toutes les methodes : qu'elles soient statiques, adaptatives, offline ou online, elles produisent toutes une prediction pour ces 24 observations qu'aucune n'a vues pendant son entrainement ou son adaptation. Les metriques portent donc exclusivement sur des previsions hors-echantillon.</div>
+                </div>
+
+                {/* Resultats MC */}
+                <div style={{fontSize:11,fontWeight:700,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Diagnostics experimental general</div>
+                <div style={{background:"#f4f7fb",borderRadius:8,padding:"12px 14px",marginBottom:12,fontSize:11,lineHeight:1.8}}>
+                  {[
+                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"BOA / MLpol / MLprod (Opera classique hors FTRL)",body:"Les methodes les plus solides de l'ensemble. Garanties theoriques de regret, taux d'apprentissage auto-adaptatifs, robustes sur experts diversifies comme sur donnees reelles. MLpol et MLprod surpassent legerement BOA en pratique. A privilegier comme reference online."},
+                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"InvMSE",body:"Deceptivement simple mais redoutablement efficace. Aucun hyperparametre critique, reaction stable aux changements de qualite des experts. Performant sur donnees reelles comme sur experts synthetiques. Meilleure baseline adaptative."},
+                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"HMOE (hors HFTRL)",body:"Apporte un gain reel sur donnees reelles ou les regimes ont un sens physique (jour/nuit, vent, tendance). Sur experts aleatoires l'avantage est moins clair. A utiliser quand la qualite des experts varie selon le contexte operationnel."},
+                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"BestExpert",body:"Winner-take-all surprenant de robustesse sur horizon court (24h) grace a la persistance temporelle de la qualite des experts. Tres efficace quand un expert domine localement. Fragile si les rangs s'inversent frequemment."},
+                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"Ridge / Linear Stacking",body:"Performants sur donnees reelles a biais stables, mais inutiles si la qualite relative des experts n'est pas stationnaire (cas MC). Attention : avec N grand, α doit etre ordres de magnitude plus eleve que la valeur par defaut pour avoir un effet reel (voir slider)."},
+                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"GRU",body:"Mieux qu'attendu sur horizon court grace a l'autocorrelation a tres court terme. Reste limite par la longueur de sequence (seq=8). A tester sur donnees reelles mais ne pas en attendre des miracles."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"FTRL",body:"Systematiquement domine par les autres Opera. Le learning rate fixe η₀ est difficile a calibrer et inadapte a haute variance. HFTRL compense partiellement mais reste inferieur a BOA/MLpol/MLprod. A eviter sauf experimentation."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"MLP Stacking",body:"La moyenne des poids softmax annule l'interet non-lineaire du reseau. Revient en pratique a un Ridge avec variance d'initialisation aleatoire en plus. Pas de valeur ajoutee claire sur les methodes lineaires."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"LSTM",body:"Plus complexe que GRU sans gain empirique clair. Plus lent a entrainer, moins stable en MC. Sur sequences courtes (seq=8), la memoire longue terme du LSTM n'apporte rien."},
+                    {tag:"A eviter",color:"#7c2d12",bg:"#ffedd5",title:"XGBoost Stacking",body:"Instable par construction sur ce probleme : trop peu de features (K experts) pour que le boosting generalise. Overfit massivement le train, performances catastrophiques en holdout. Non viable dans ce contexte."},
+                  ].map(({tag,color,bg,title,body})=>(
+                    <div key={title} style={{marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                        <span style={{background:bg,color,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:800}}>{tag}</span>
+                        <span style={{fontWeight:700,color:"#0e2d52"}}>{title}</span>
+                      </div>
+                      <div style={{color:"#333",lineHeight:1.5}}>{body}</div>
+                    </div>
+                  ))}
+                  <div style={{marginTop:6,paddingTop:10,borderTop:"1px solid #d1d5db"}}>
+                    <div style={{fontWeight:700,color:"#0e2d52",marginBottom:4}}>Robustesse statistique</div>
+                    <div style={{color:"#333",lineHeight:1.5}}>Par la loi des grands nombres, un tres grand nombre de simulations MC ferait converger les moyennes et reduirait la variance des classements. Les conclusions structurelles resteraient stables : XGBoost catastrophique et FTRL domine sont des problemes de design, pas du bruit. Ridge = LinearStacking est un probleme d'echelle de α. MLP sans valeur ajoutee sur le lineaire est structurel. En revanche, le haut du classement pourrait bouger : BestExpert risque de descendre car son avantage depend de l'existence d'un expert localement dominant - ce qui n'est pas garanti sur toutes les configurations. InvMSE devrait consolider sa position grace a sa regularite sur tous types d'experts. BOA/MLpol/MLprod resteraient solides - leurs garanties theoriques de regret se manifestent precisement sur de nombreuses realisations. Pour HMOE, un grand N de simulations permettrait de trancher si le gating par regimes apporte vraiment quelque chose sur experts synthetiques ou si c'est du bruit. Conclusion : avec suffisamment de runs, on validerait ou invaliderait surtout le top du classement - le bas resterait stable, et la vraie question serait de savoir si BestExpert tient face a InvMSE et Opera sur la duree.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {showCsvInfo&&(
             <div onClick={()=>setShowCsvInfo(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:"24px 28px",maxWidth:560,width:"90%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.25)"}}>
@@ -1515,7 +1696,9 @@ export default function App(){
 
           <div style={{background:"#003C8F",borderRadius:10,padding:"10px 10px 6px 10px",marginBottom:12}}>
           {/* Algorithme */}
-          <Section title="Algorithme d'agrégation" titleColor="#fff" titleStyle={{fontSize:13,fontWeight:800,letterSpacing:0.5}}>
+          <Section title="Algorithme d'agrégation" titleColor="#fff" titleStyle={{fontSize:13,fontWeight:800,letterSpacing:0.5}} titleExtra={
+            <button onClick={e=>{e.stopPropagation();setShowAlgoInfo(true);}} title="Infos sur les algorithmes" style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.6)",borderRadius:"50%",width:15,height:15,fontSize:9,color:"#fff",cursor:"pointer",fontWeight:800,padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>i</button>
+          }>
             {ALGO_GROUPS.map((g,gi)=>{
               const boxBg="#1e5fcc";
               return(

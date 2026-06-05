@@ -24,11 +24,11 @@ function solveLinear(A, b) {
 }
 
 // ── Linear Stacking ───────────────────────────────────────────────────────────
-// OLS meta-model trained on the first 70% of data (no leakage).
+// OLS meta-model. Trained on all data except the last 24 observations (test holdout).
 
 export function runLinearStacking(data, cols, params) {
   const K = cols.length;
-  const trainEnd = Math.max(K + 2, Math.floor(data.length * 0.7));
+  const trainEnd = Math.max(K + 2, data.length - 24);
   const trainData = data.slice(0, trainEnd);
 
   const X = trainData.map(r => cols.map(c => r[c] || 0));
@@ -95,7 +95,7 @@ export function runXGBoostStacking(data, cols, params) {
   const K = cols.length;
   const nTrees = params.nTrees || 50;
   const lr = params.xgbLr || 0.1;
-  const trainEnd = Math.max(K + 2, Math.floor(data.length * 0.7));
+  const trainEnd = Math.min(Math.max(K + 2, Math.floor(data.length * 0.7)), data.length - 24);
   const trainData = data.slice(0, trainEnd);
 
   const activeRegimes = REGIME_KEYS.filter(k => trainData.some(r => (r[k] || 0) !== 0));

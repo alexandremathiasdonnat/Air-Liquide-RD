@@ -136,7 +136,7 @@ export async function runMonteCarloGridSearch({
         combo.ftrlP,
         combo.selectedHmoeRegimes,
       );
-      const metrics = calcMetrics(run.predictions, rows);
+      const metrics = calcMetrics(run.predictions.slice(-24), rows.slice(-24));
       if (!aggregates[combo.id]) {
         aggregates[combo.id] = {
           id: combo.id,

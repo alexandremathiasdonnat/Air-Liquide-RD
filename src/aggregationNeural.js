@@ -90,14 +90,14 @@ function adamStep(param, grad, state, lr, t, b1 = 0.9, b2 = 0.999, eps = 1e-8) {
 // ── MLP Stacking ──────────────────────────────────────────────────────────────
 //
 // Architecture: Input → Dense(16, ReLU) → Dense(8, ReLU) → Dense(K, Softmax)
-// Output: expert weights (sum to 1).  y_hat = sum(w_k * expert_pred_k).
-// Trained on first 70% of data (chronological split, no leakage).
+// Trains on the full dataset, then averages the softmax outputs to produce
+// fixed global weights — same philosophy as Ridge (100% offline, fixed weights).
 
 export async function runMLPStacking(data, cols, params, onProgress) {
   const K = cols.length;
   const epochs = Math.max(30, Math.min(80, params.mlpEpochs || 50));
   const lr = 1e-3;
-  const trainEnd = Math.max(K + 2, Math.floor(data.length * 0.7));
+  const trainEnd = Math.max(K + 2, data.length - 24);
   const H1 = 16, H2 = 8;
 
   const activeRegimes = REGIME_KEYS.filter(k => data.some(r => (r[k] || 0) !== 0));
@@ -107,6 +107,7 @@ export async function runMLPStacking(data, cols, params, onProgress) {
     return [...cols.map(c => row[c] || 0), ...activeRegimes.map(k => row[k] || 0)];
   }
 
+  // Scaler fitted on training split only to avoid leakage
   const trainFeats = data.slice(0, trainEnd).map(getFeatures);
   const scaler = fitScaler(trainFeats);
   const allX = data.map(r => applyScaler(getFeatures(r), scaler));
@@ -187,19 +188,20 @@ export async function runMLPStacking(data, cols, params, onProgress) {
     }
   }
 
-  // Inference on all data
-  const predictions = [], weightHistory = [];
-  for (let t = 0; t < data.length; t++) {
+  // Derive fixed offline weights: average softmax outputs over the training set
+  const wSum = zeroVec(K);
+  for (let t = 0; t < trainEnd; t++) {
     const x = allX[t];
-    const e = cols.map(c => data[t][c] || 0);
-    const pre1 = addVec(mv(W1, x), b1);
-    const h1 = pre1.map(relu);
-    const pre2 = addVec(mv(W2, h1), b2);
-    const h2 = pre2.map(relu);
+    const h1 = addVec(mv(W1, x), b1).map(relu);
+    const h2 = addVec(mv(W2, h1), b2).map(relu);
     const w = softmax(addVec(mv(W3, h2), b3));
-    predictions.push(w.reduce((s, wi, k) => s + wi * e[k], 0));
-    weightHistory.push([...w]);
+    for (let k = 0; k < K; k++) wSum[k] += w[k];
   }
+  const wFixed = wSum.map(v => v / trainEnd);
+
+  // Apply fixed weights to all data (constant — no leakage on test period)
+  const predictions = data.map(row => cols.reduce((s, c, k) => s + (row[c] || 0) * wFixed[k], 0));
+  const weightHistory = data.map(() => [...wFixed]);
   return { predictions, weightHistory };
 }
 
@@ -215,7 +217,7 @@ export async function runGRUAggregator(data, cols, params, onProgress) {
   const lr = 1e-3;
   const H = 8;
   // trainEnd capped at data.length; seqLen capped so at least 4 training sequences exist
-  const rawTrainEnd = Math.min(data.length, Math.max(K + 4, Math.floor(data.length * 0.7)));
+  const rawTrainEnd = Math.min(data.length - 24, Math.max(K + 4, Math.floor(data.length * 0.7)));
   const maxSeqLen = Math.max(2, Math.floor(rawTrainEnd / 4));
   const seqLen = Math.max(2, Math.min(maxSeqLen, params.gruSeqLen || 8)); // hard cap = min(maxSeqLen, 725)
   const trainEnd = rawTrainEnd;
@@ -394,7 +396,7 @@ export async function runLSTMAggregator(data, cols, params, onProgress) {
   const epochs = Math.max(5, Math.min(80, params.lstmEpochs || 30));
   const lr = 1e-3;
   const H = 16;
-  const rawTrainEnd = Math.min(data.length, Math.max(K + 4, Math.floor(data.length * 0.7)));
+  const rawTrainEnd = Math.min(data.length - 24, Math.max(K + 4, Math.floor(data.length * 0.7)));
   const maxSeqLen = Math.max(2, Math.floor(rawTrainEnd / 4));
   const seqLen = Math.max(2, Math.min(maxSeqLen, params.lstmSeqLen || 8)); // hard cap = min(maxSeqLen, 725)
   const trainEnd = rawTrainEnd;

@@ -558,8 +558,11 @@ export function runHmoe(
   const predictions = [];
   const weightHistory = [];
   const regimeHistory = [];
+  const testStart = Math.max(1, enrichedRows.length - 24);
 
-  for (const row of enrichedRows) {
+  for (let rowIndex = 0; rowIndex < enrichedRows.length; rowIndex++) {
+    const row = enrichedRows[rowIndex];
+    const isTrain = rowIndex < testStart;
     const expertPredictions = expertColumns.map((columnName) => toNumber(row[columnName]));
     const target = toNumber(row.y_true);
     let aggregatePrediction = 0;
@@ -592,12 +595,14 @@ export function runHmoe(
         lossFunctions[lossType](prediction, target),
       );
       const dominantBranch = probabilities[0] >= probabilities[1] ? 0 : 1;
-      regimeState.models[dominantBranch].update(expertPredictions, target);
-      regimeState.gate.update(
-        featureVector,
-        regimeLosses,
-        regimeState.directionHint(row, featureVector),
-      );
+      if (isTrain) {
+        regimeState.models[dominantBranch].update(expertPredictions, target);
+        regimeState.gate.update(
+          featureVector,
+          regimeLosses,
+          regimeState.directionHint(row, featureVector),
+        );
+      }
 
       stepRegimes[regimeState.id] = {
         probabilities: probabilities.slice(),

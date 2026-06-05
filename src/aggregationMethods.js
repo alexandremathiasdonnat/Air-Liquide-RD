@@ -80,6 +80,7 @@ export function runTrimmedMean(data, cols, params) {
 export function runInvMSE(data, cols, params) {
   const expertCount = cols.length;
   const window = params.window || 48;
+  const testStart = Math.max(1, data.length - 24);
   const predictions = [];
   const weightHistory = [];
   for (let index = 0; index < data.length; index += 1) {
@@ -88,7 +89,8 @@ export function runInvMSE(data, cols, params) {
     if (index < 2) {
       weights = new Array(expertCount).fill(1 / expertCount);
     } else {
-      const slice = data.slice(Math.max(0, index - window), index);
+      const windowEnd = Math.min(index, testStart);
+      const slice = data.slice(Math.max(0, windowEnd - window), windowEnd);
       const mses = cols.map((column) => {
         const errors = slice.map((row) => (row[column] || 0) - row.y_true);
         return errors.reduce((sum, error) => sum + error ** 2, 0) / slice.length + 1e-6;
@@ -104,13 +106,15 @@ export function runInvMSE(data, cols, params) {
 export function runBestExpert(data, cols, params) {
   const expertCount = cols.length;
   const window = params.window || 48;
+  const testStart = Math.max(1, data.length - 24);
   const predictions = [];
   const weightHistory = [];
   for (let index = 0; index < data.length; index += 1) {
     const values = cols.map((column) => data[index][column] || 0);
     let bestIndex = 0;
     if (index >= 2) {
-      const slice = data.slice(Math.max(0, index - window), index);
+      const windowEnd = Math.min(index, testStart);
+      const slice = data.slice(Math.max(0, windowEnd - window), windowEnd);
       const maes = cols.map((column) => {
         const errors = slice.map((row) => Math.abs((row[column] || 0) - row.y_true));
         return errors.reduce((sum, error) => sum + error, 0) / slice.length;
@@ -130,19 +134,28 @@ export function runRidge(data, cols, params) {
   const alpha = params.alpha || 1;
   const X = data.map((row) => cols.map((column) => row[column] || 0));
   const y = data.map((row) => row.y_true);
+  const trainEnd = Math.max(expertCount + 2, X.length - 24);
+  const Xtrain = X.slice(0, trainEnd);
+  const ytrain = y.slice(0, trainEnd);
+  const xStd = Array.from({ length: expertCount }, (_, k) => {
+    const mean = Xtrain.reduce((sum, row) => sum + row[k], 0) / trainEnd;
+    return Math.sqrt(Xtrain.reduce((sum, row) => sum + (row[k] - mean) ** 2, 0) / trainEnd + 1e-8);
+  });
+  const Xts = Xtrain.map((row) => row.map((value, k) => value / xStd[k]));
   const XtX = Array.from({ length: expertCount }, (_, left) => (
     Array.from({ length: expertCount }, (_, right) => (
-      X.reduce((sum, row) => sum + row[left] * row[right], 0) + (left === right ? alpha : 0)
+      Xts.reduce((sum, row) => sum + row[left] * row[right], 0) + (left === right ? alpha : 0)
     ))
   ));
   const Xty = Array.from(
     { length: expertCount },
-    (_, expertIndex) => X.reduce((sum, row, rowIndex) => sum + row[expertIndex] * y[rowIndex], 0),
+    (_, k) => Xts.reduce((sum, row, i) => sum + row[k] * ytrain[i], 0),
   );
-  const rawWeights = solveLinear(XtX, Xty);
+  const wScaled = solveLinear(XtX, Xty);
+  const rawWeights = wScaled.map((w, k) => w / xStd[k]);
   const displayedWeights = vnorm(rawWeights.map(Math.abs));
   return {
-    predictions: X.map((row) => row.reduce((sum, value, expertIndex) => sum + value * rawWeights[expertIndex], 0)),
+    predictions: X.map((row) => row.reduce((sum, value, k) => sum + value * rawWeights[k], 0)),
     weightHistory: data.map(() => [...displayedWeights]),
   };
 }
