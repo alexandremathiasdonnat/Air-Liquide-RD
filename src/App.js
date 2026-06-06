@@ -1828,7 +1828,8 @@ export default function App(){
                     </div>
                   </div>
                   <div style={{marginBottom:8,background:"#1e5fcc",borderRadius:8,padding:"8px 10px"}}>
-                    <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Offline Learning</div>
+                    <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:2}}>Offline Learning</div>
+                    <div style={{fontSize:8,color:"#f87171",fontStyle:"italic",marginBottom:6}}>Ne pas regarder les poids dynamiques pour cette famille : ce n'est pas du learning online, donc ces courbes ne doivent pas être interprétées comme des poids adaptatifs appris au fil du temps. Ce ne sont que des poids issus d'un modèle entraîné offline, puis éventuellement rétro-appliqués sur l'historique pour visualisation. (voir explications dans "i").</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {offlineGroups.map(g=>renderGroupInner(g,"#2a6dd9"))}
                     </div>
