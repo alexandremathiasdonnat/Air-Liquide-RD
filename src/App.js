@@ -104,7 +104,7 @@ const ALGO_GROUPS = [
       {id:"mlpEpochs",label:"Epoch",type:"slider",min:30,max:80,step:5,default:50},
     ]},
   ]},
-  { label:"Online Learning / Opera", algos:[
+  { label:"OPERA", algos:[
     {id:"BOA",name:"MOE BOA",desc:"Bernstein Online Aggregation.",params:[]},
     {id:"MLpol",name:"MOE MLpol",desc:"Multiplicative Weights Polynomial.",params:[]},
     {id:"MLprod",name:"MOE MLprod",desc:"Multiplicative Weights Prod.",params:[]},
@@ -114,7 +114,7 @@ const ALGO_GROUPS = [
       {id:"maxiter",label:"Max itérations",type:"slider",min:10,max:200,step:10,default:50},
     ]},
   ]},
-  { label:"HMOE", algos:[
+  { label:"OPERA + Hierarchical Regimes", algos:[
     {id:"HMOE_BOA",name:"HMOE BOA",desc:"BOA avec branches regime-gated HMOE.",params:[]},
     {id:"HMOE_MLpol",name:"HMOE MLpol",desc:"MLpol avec branches regime-gated HMOE.",params:[]},
     {id:"HMOE_MLprod",name:"HMOE MLprod",desc:"MLprod avec branches regime-gated HMOE.",params:[]},
@@ -741,6 +741,7 @@ export default function App(){
   const [showAlgoInfo,setShowAlgoInfo]=useState(false);
   const [showCsvInfo,setShowCsvInfo]=useState(false);
   const [showTutorial,setShowTutorial]=useState(false);
+  const [showAbout,setShowAbout]=useState(false);
   const [prodMode,setProdMode]=useState(false);
   const [prodSelectedExperts,setProdSelectedExperts]=useState([]);
   const [results,setResults]=useState(null);
@@ -1233,7 +1234,10 @@ export default function App(){
         <div>
           <div style={{fontWeight:700,fontSize:28,color:"#123ea5",fontFamily:"'Orbitron', sans-serif"}}>MoE Runner Engine - Wind Power Time Series Forecasting</div>
         </div>
-        <button onClick={()=>setShowTutorial(true)} style={{marginLeft:"auto",background:"#0e2d52",color:"#fff",border:"none",borderRadius:8,padding:"6px 16px",fontSize:12,cursor:"pointer",fontWeight:600}}>? Tutorial</button>
+        <div style={{marginLeft:"auto",display:"flex",gap:0}}>
+          <button onClick={()=>setShowAbout(true)} style={{background:"#111",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"6px 16px",fontSize:12,cursor:"pointer",fontWeight:600}}>About</button>
+          <button onClick={()=>setShowTutorial(true)} style={{background:"#0e2d52",color:"#fff",border:"none",borderRadius:"0 8px 8px 0",padding:"6px 16px",fontSize:12,cursor:"pointer",fontWeight:600}}>? Tutorial</button>
+        </div>
       </div>
 
       <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}}>
@@ -1412,16 +1416,18 @@ export default function App(){
                 <div style={{fontSize:11,fontWeight:700,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Diagnostics experimental general</div>
                 <div style={{background:"#f4f7fb",borderRadius:8,padding:"12px 14px",marginBottom:12,fontSize:11,lineHeight:1.8}}>
                   {[
-                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"BOA / MLpol / MLprod (Opera classique hors FTRL)",body:"Les methodes les plus solides de l'ensemble. Garanties theoriques de regret, taux d'apprentissage auto-adaptatifs, robustes sur experts diversifies comme sur donnees reelles. MLpol et MLprod surpassent legerement BOA en pratique. A privilegier comme reference online."},
-                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"InvMSE",body:"Deceptivement simple mais redoutablement efficace. Aucun hyperparametre critique, reaction stable aux changements de qualite des experts. Performant sur donnees reelles comme sur experts synthetiques. Meilleure baseline adaptative."},
-                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"HMOE (hors HFTRL)",body:"Apporte un gain reel sur donnees reelles ou les regimes ont un sens physique (jour/nuit, vent, tendance). Sur experts aleatoires l'avantage est moins clair. A utiliser quand la qualite des experts varie selon le contexte operationnel."},
-                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"BestExpert",body:"Winner-take-all surprenant de robustesse sur horizon court (24h) grace a la persistance temporelle de la qualite des experts. Tres efficace quand un expert domine localement. Fragile si les rangs s'inversent frequemment."},
-                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"Ridge / Linear Stacking",body:"Performants sur donnees reelles a biais stables, mais inutiles si la qualite relative des experts n'est pas stationnaire (cas MC). Attention : avec N grand, α doit etre ordres de magnitude plus eleve que la valeur par defaut pour avoir un effet reel (voir slider)."},
-                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"GRU",body:"Mieux qu'attendu sur horizon court grace a l'autocorrelation a tres court terme. Reste limite par la longueur de sequence (seq=8). A tester sur donnees reelles mais ne pas en attendre des miracles."},
-                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"FTRL",body:"Systematiquement domine par les autres Opera. Le learning rate fixe η₀ est difficile a calibrer et inadapte a haute variance. HFTRL compense partiellement mais reste inferieur a BOA/MLpol/MLprod. A eviter sauf experimentation."},
-                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"MLP Stacking",body:"La moyenne des poids softmax annule l'interet non-lineaire du reseau. Revient en pratique a un Ridge avec variance d'initialisation aleatoire en plus. Pas de valeur ajoutee claire sur les methodes lineaires."},
-                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"LSTM",body:"Plus complexe que GRU sans gain empirique clair. Plus lent a entrainer, moins stable en MC. Sur sequences courtes (seq=8), la memoire longue terme du LSTM n'apporte rien."},
-                    {tag:"A eviter",color:"#7c2d12",bg:"#ffedd5",title:"XGBoost Stacking",body:"Instable par construction sur ce probleme : trop peu de features (K experts) pour que le boosting generalise. Overfit massivement le train, performances catastrophiques en holdout. Non viable dans ce contexte."},
+                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"BestExpert",body:"#1 sur 100 simulations MC (MAE 157MW). La prediction de fragilite avec plus de runs etait fausse : BestExpert tient et devance OPERA. La persistance temporelle de la dominance locale d'un expert est suffisamment frequente sur 100 configurations aleatoires pour qu'il domine en moyenne. Winner-take-all robuste sur horizon 24h."},
+                    {tag:"A recommander",color:"#166534",bg:"#dcfce7",title:"MLpol / MLprod (OPERA)",body:"#2 et #3 (MAE 160-162MW). Confirment leur statut de reference online sur 100 runs. Garanties theoriques de regret, taux adaptatifs, stables. MLpol devance legerement MLprod. Leurs variantes HMOE (HMLpol #4, HMLprod #5) ameliorent encore les resultats, validant l'apport des regimes pour ces methodes."},
+                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"HMLpol / HMLprod",body:"#4 et #5 (MAE 163-164MW). Les variantes HMOE de MLpol et MLprod devancent leurs bases respectives meme sur experts aleatoires. Le gating par regimes apporte un gain reel et coherent sur 100 runs pour ces methodes. Resultat plus clair qu'a 5 runs."},
+                    {tag:"Solide",color:"#1e40af",bg:"#dbeafe",title:"BOA et HBOA",body:"BOA classe #6 (MAE 167MW) reste solide mais se fait devancer par MLpol/MLprod et leurs variantes HMOE. HBOA classe #7 (170MW) est legerement moins bon que BOA de base : le gating par regimes ne profite pas a BOA contrairement a MLpol/MLprod. Ecart faible mais coherent sur 100 runs."},
+                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"InvMSE",body:"Rétrogradé a #10 (MAE 189MW) sur 100 runs avec win=168 - nettement en retrait d'OPERA (~20% de MAE en plus). Avec une fenetre longue, la reaction aux changements de qualite des experts est trop lente sur des configurations aleatoires volatiles. Reste pertinent sur donnees reelles a faible volatilite des experts, mais n'est plus la meilleure baseline adaptative."},
+                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"Median / TrimMean",body:"#8 et #9 ex-aequo (MAE 187MW). Performances quasi-identiques et stables sur 100 runs. Baselines statiques robustes, sans adaptation. Legerement meilleures qu'InvMSE sur ce protocole - resultat qui souligne la lenteur de reaction d'InvMSE avec win=168."},
+                    {tag:"Contextuel",color:"#92400e",bg:"#fef3c7",title:"Ridge / Linear Stacking",body:"#17-18 ex-aequo (MAE 287MW) - confirment leur equivalence sur ce probleme. Tres en retrait sur experts aleatoires non-stationnaires. Restent exploitables sur donnees reelles a biais stables, mais α doit etre bien calibre (ordres de magnitude au-dessus de la valeur par defaut avec N grand, voir slider)."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"FTRL / HFTRL",body:"FTRL #12 (MAE 224MW), HFTRL #11 (196MW). HFTRL ameliore FTRL grace aux regimes mais reste loin de BOA/MLpol/MLprod. Le learning rate fixe η₀ reste inadapte a haute variance. Confirme sur 100 runs : structurellement inferieur aux autres OPERA."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"GRU / LSTM",body:"GRU #14 (MAE 254MW), LSTM #15 (263MW). Tous deux battus par Median/TrimMean (187MW) et InvMSE. Sur sequences courtes (seq=8) et experts aleatoires, la memoire temporelle apporte peu. LSTM n'apporte rien de plus que GRU. Pas de valeur ajoutee sur ce protocole."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"MLP Stacking",body:"#13 (MAE 238MW). La moyenne des poids softmax annule l'interet non-lineaire du reseau. Revient en pratique a un Ridge avec variance d'initialisation en plus. Confirme sur 100 runs : pas de valeur ajoutee sur les methodes lineaires."},
+                    {tag:"Deconseille",color:"#991b1b",bg:"#fee2e2",title:"Moyenne simple",body:"#16 (MAE 265MW) - resultat surprenant : la moyenne simple est battue par GRU et LSTM. Avec des experts aleatoires dont les biais varient fortement entre simulations, une ponderation egale amplifie les erreurs des mauvais experts. Meme une memoire temporelle limitee (GRU seq=8) suffit a mieux filtrer en moyenne."},
+                    {tag:"A eviter",color:"#7c2d12",bg:"#ffedd5",title:"XGBoost Stacking",body:"#19 (MAE 524MW, MAPE 25%). Catastrophique et confirme sur 100 runs. Overfit massif du train, generalisation nulle sur holdout. Trop peu de features (K experts) pour que le boosting soit viable. Non utilisable dans ce contexte."},
                   ].map(({tag,color,bg,title,body})=>(
                     <div key={title} style={{marginBottom:10}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -1432,8 +1438,29 @@ export default function App(){
                     </div>
                   ))}
                   <div style={{marginTop:6,paddingTop:10,borderTop:"1px solid #d1d5db"}}>
-                    <div style={{fontWeight:700,color:"#0e2d52",marginBottom:4}}>Robustesse statistique</div>
-                    <div style={{color:"#333",lineHeight:1.5}}>Par la loi des grands nombres, un tres grand nombre de simulations MC ferait converger les moyennes et reduirait la variance des classements. Les conclusions structurelles resteraient stables : XGBoost catastrophique et FTRL domine sont des problemes de design, pas du bruit. Ridge = LinearStacking est un probleme d'echelle de α. MLP sans valeur ajoutee sur le lineaire est structurel. En revanche, le haut du classement pourrait bouger : BestExpert risque de descendre car son avantage depend de l'existence d'un expert localement dominant - ce qui n'est pas garanti sur toutes les configurations. InvMSE devrait consolider sa position grace a sa regularite sur tous types d'experts. BOA/MLpol/MLprod resteraient solides - leurs garanties theoriques de regret se manifestent precisement sur de nombreuses realisations. Pour HMOE, un grand N de simulations permettrait de trancher si le gating par regimes apporte vraiment quelque chose sur experts synthetiques ou si c'est du bruit. Conclusion : avec suffisamment de runs, on validerait ou invaliderait surtout le top du classement - le bas resterait stable, et la vraie question serait de savoir si BestExpert tient face a InvMSE et Opera sur la duree.</div>
+                    <div style={{fontWeight:700,color:"#0e2d52",marginBottom:4}}>Robustesse statistique (base : 100 simulations MC)</div>
+                    <div style={{color:"#333",lineHeight:1.6}}>
+                      Avec 100 simulations (6 888 lignes par run, 19 méthodes), le classement est désormais statistiquement solide. Les prédictions issues de l'analyse à 5 runs ont été partiellement confirmées et partiellement infirmées.
+                      <ul style={{marginTop:8,marginBottom:8,paddingLeft:18}}>
+                        <li><strong>Confirmé :</strong> XGBoost catastrophique, FTRL dominé, Ridge = LinearStacking, MLP sans valeur ajoutée, GRU/LSTM sous les baselines statiques.</li>
+                        <li style={{marginTop:6}}><strong>Infirmé :</strong> BestExpert n'a pas décliné - il est #1, ce qui montre que la persistance locale de dominance d'un expert est un phénomène fréquent et exploitable sur 100 configurations. InvMSE n'a pas consolidé - il tombe à #10, révèle que win=168 est trop lent pour des configurations volatiles.</li>
+                      </ul>
+                      Sur HMOE : le gain est réel et cohérent pour MLpol/MLprod (HMLpol #4, HMLprod #5 devancent leurs bases) mais absent voire négatif pour BOA (HBOA #7 légèrement derrière BOA #6). Surprise : la moyenne simple (#16) est battue par GRU/LSTM, signe que pondérer également des experts de qualité très variable est pénalisant même face à un RNN sur séquences courtes. Le classement est maintenant stable : le bas du tableau ne bougera plus avec davantage de runs, et le trio de tête BestExpert/MLpol/MLprod est robuste.
+                    </div>
+                  </div>
+                  <div style={{marginTop:6,paddingTop:10,borderTop:"1px solid #d1d5db"}}>
+                    <div style={{fontWeight:700,color:"#0e2d52",marginBottom:4}}>Conclusion méthodologique : offline stacking, online aggregation et piste d'extension</div>
+                    <div style={{color:"#333",lineHeight:1.5}}>
+                      <p>Cette analyse met en évidence une distinction centrale entre deux familles de méthodes : les méthodes offline et les méthodes d'agrégation online. Dans les approches offline comme le stacking par régression linéaire, Ridge, XGBoost ou MLP, les modèles ont été entraînés une seule fois sur l'historique disponible avant la période de test, puis gelés pour prédire les 24 dernières observations. Elles apprennent donc une relation globale entre les prédictions des experts et la cible, mais ne modifient pas leurs poids séquentiellement après chaque nouvelle erreur observée.</p>
+                      <p>Cette propriété explique pourquoi les méthodes linéaires de stacking produisent des poids fixes. Ce comportement n'est pas nécessairement un problème ni un signe de data leakage : il est simplement cohérent avec la nature offline du protocole. En revanche, il limite leur capacité à s'adapter à une qualité d'experts variable dans le temps. Si un expert devient temporairement meilleur ou moins fiable, un stacking offline ne peut pas réagir sans être réentraîné.</p>
+                      <p>À l'inverse, les méthodes OPERA, comme BOA, MLpol ou MLprod, sont structurellement conçues pour ce type de problème. Elles mettent à jour les poids des experts au fil du temps en fonction des pertes observées, tout en respectant la causalité temporelle. Elles correspondent donc beaucoup mieux à la logique du problème : agréger plusieurs prévisions expertes dans un contexte séquentiel, potentiellement non stationnaire, où la performance relative des experts peut évoluer.</p>
+                      <p style={{color:"#1A00DA"}}>Une extension possible aurait été d'implémenter un "online stacking", ou plus précisément un stacking réentraîné séquentiellement. Concrètement, à chaque date (t), le modèle aurait été réentraîné sur l'historique disponible ([0,t]), puis aurait appris un nouveau vecteur de 3 poids associés aux 3 experts. Ces poids auraient ensuite été utilisés pour agréger les prédictions de la période suivante. Une fois la nouvelle observation disponible, elle aurait été ajoutée à l'historique, puis le modèle aurait été réentraîné sur ([0,t+1]). En répétant ce processus jusqu'à (N-24), on aurait obtenu une trajectoire temporelle de poids, affichable dans la page "poids dynamiques".</p>
+                      <p style={{color:"#1A00DA"}}>Avec environ 6000 observations et seulement 3 experts, cette approche aurait été techniquement faisable et peu coûteuse pour des modèles simples comme la régression linéaire ou Ridge. En revanche, elle aurait été nettement moins naturelle et probablement moins rentable pour des modèles plus complexes comme XGBoost, MLP, GRU ou LSTM, dont le réentraînement répété aurait été plus lourd, plus instable, et peu justifié compte tenu du faible nombre d'experts disponibles.</p>
+                      <p style={{color:"#1A00DA"}}>Surtout, la pertinence d'un tel online stacking aurait dépendu des variables utilisées. Si le modèle se limite aux prédictions courantes des experts, il produit certes des poids dynamiques, mais sans modéliser explicitement la fiabilité récente des experts, leurs biais passés, ou leur dépendance à certains régimes opérationnels. Pour devenir réellement compétitif, il aurait fallu enrichir le modèle avec des variables de performance passée ou de contexte : erreurs récentes, MAE/MSE glissants, biais récents, heure, vent, volatilité, niveau de production ou régime identifié.</p>
+                      <p style={{color:"#1A00DA"}}>À ce stade, l'approche ne serait plus un simple stacking, mais une forme d'agrégation online contextualisée, plus complexe à concevoir et à valider proprement. Ainsi, l'absence d'un online stacking ne remet pas en cause les conclusions principales de l'analyse. Elle constitue une piste d'amélioration future intéressante, notamment comme baseline intermédiaire de type Online Ridge, Recursive Least Squares ou SGD stacking. Cependant, les méthodes OPERA restent plus naturellement alignées avec la tâche, puisqu'elles sont conçues précisément pour l'agrégation séquentielle d'experts à partir des pertes observées, sans nécessiter le réentraînement complet d'un méta-modèle à chaque pas de temps.</p>
+                      <p style={{color:"#A80000"}}>Une autre piste d'extension serait de tester des variantes d'algorithmes OPERA adaptées selon les contraintes et philosophies propres à chaque usage : certains contextes opérationnels peuvent nécessiter des algorithmes plus réactifs aux changements brusques de qualité des experts, d'autres une convergence plus lente et stable, d'autres encore une flexibilité sur la fonction de perte ou sur la structure des mises à jour de poids. Des variantes comme des OPERA à fenêtre glissante, à mémoire exponentielle, ou avec des contraintes de régularisation différentes pourraient être explorées pour adapter finement le comportement d'agrégation au profil de la série et des experts disponibles.</p>
+                      <p>Le résultat central reste néanmoins clair : pour cette tâche spécifique, les méthodes les plus naturellement adaptées sont les méthodes d'agrégation online, éventuellement enrichies par des régimes. Le stacking offline reste une baseline utile pour mesurer la performance d'une combinaison globale des experts, mais il est structurellement moins aligné avec le besoin d'adaptation dynamique. Les méthodes plus complexes comme XGBoost, MLP, GRU ou LSTM peuvent être explorées, mais elles ne sont pas nécessairement les plus pertinentes ici : le problème n'est pas d'apprendre une représentation profonde à partir d'un grand volume de features, mais d'ajuster efficacement, proprement et séquentiellement la confiance accordée à chaque expert.</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1486,6 +1513,57 @@ export default function App(){
                   <div style={{color:"#c8e6c9",fontFamily:"monospace",whiteSpace:"pre"}}>{"2025-01-01 00:00:00+00:00,850.0,820.5,910.2"}</div>
                   <div style={{color:"#c8e6c9",fontFamily:"monospace",whiteSpace:"pre"}}>{"2025-01-01 01:00:00+00:00,900.0,880.1,920.7"}</div>
                 </div>
+                <div style={{marginTop:12,background:"#fff8e1",border:"1px solid #f0c040",borderRadius:8,padding:"10px 12px",fontSize:11,lineHeight:1.6,color:"#7a5c00"}}>
+                  <strong>Données démo :</strong> un jeu de données démo (27 lignes) est chargé par défaut au démarrage. Il permet de tester l'interface sans uploader de fichier.<br/><br/>
+                  <strong>Mode génération d'experts aléatoires :</strong> lorsque le mode production n'est pas activé, la génération aléatoire d'experts fonctionne avec les données démo chargées par défaut, ou avec le fichier spécifique <code style={{background:"#fdeea3",borderRadius:3,padding:"1px 4px"}}>experts_predictions_with_regimes.csv</code> <em>(disponible sur demande)</em>. Sans l'un ou l'autre, le mode de génération aléatoire - qui repose sur un bootstrapping semi-aléatoire de ce fichier - ne fonctionnera pas.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showAbout&&(
+            <div onClick={()=>setShowAbout(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,padding:"28px 32px",maxWidth:600,width:"92%",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.3)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                  <div style={{fontSize:15,fontWeight:800,color:"#0e2d52"}}>À propos</div>
+                  <button onClick={()=>setShowAbout(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#666",lineHeight:1}}>×</button>
+                </div>
+
+                {/* Bloc : Présentation */}
+                <div style={{background:"#f4f7fb",border:"1px solid #d0dae8",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Présentation</div>
+                  <div style={{color:"#333",lineHeight:1.7,fontSize:13}}>
+                    MoE Runner Engine est un outil interactif de combinaison de prévisions expertes appliqué à la production d'énergie d'une ferme éolienne sur une zone géographique précise. Chaque jour, plusieurs modèles experts fournissent 24 prédictions horaires pour le lendemain. L'enjeu central est de trouver la meilleure façon d'agréger ces experts au fil du temps, en tenant compte du fait que leur qualité relative peut évoluer.
+                  </div>
+                </div>
+
+                {/* Bloc : Méthodologie */}
+                <div style={{background:"#f4f7fb",border:"1px solid #d0dae8",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Méthodologie</div>
+                  <div style={{color:"#333",lineHeight:1.7,fontSize:13}}>
+                    La méthodologie la plus adaptée à cette tâche est l'apprentissage dynamique (Online) : les méthodes comme BOA, MLpol ou MLprod ajustent les poids accordés à chaque expert à chaque nouvelle observation, en respectant la causalité temporelle. HMoE est une extension prometteuse de cette famille, combinant agrégation online et détection de régimes.
+                    <br/><br/>
+                    Des approches Offlines (Stacking de modèles de régression multioutput &amp; RNNs) sont également testées à titre comparatif, mais restent structurellement moins adaptées à la nature séquentielle du problème. Ces méthodes pourraient en théorie être transformées en versions online, mais le tradeoff coût de calcul / qualité de prédictions semble peu séduisant - ce qui reste néanmoins une piste d'extension.
+                  </div>
+                </div>
+
+                {/* Bloc : Extensibilité */}
+                <div style={{background:"#f4f7fb",border:"1px solid #d0dae8",borderRadius:10,padding:"14px 16px",marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#0e2d52",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Extensibilité</div>
+                  <div style={{color:"#333",lineHeight:1.7,fontSize:13}}>
+                    Cet outil peut être étendu à d'autres types de séries temporelles et d'autres cas d'usage. Une adaptation nécessiterait toutefois de revoir plusieurs aspects : le parsing et le format du CSV d'entrée, les scripts d'upload et de prétraitement, les features utilisées pour la détection de régimes, la granularité temporelle (horaire, journalière, etc.), ainsi que la logique de découpage train/test selon l'horizon de prévision cible. La structure modulaire du moteur facilite ces adaptations pour des équipes souhaitant l'appliquer à d'autres domaines (énergie solaire, consommation, météo, finance…).
+                  </div>
+                </div>
+
+                {/* Bloc : Crédits */}
+                <div style={{background:"#0e2d52",borderRadius:10,padding:"14px 16px"}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#7ecfea",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Crédits</div>
+                  <div style={{color:"#e8eef6",lineHeight:1.7,fontSize:13}}>
+                    <strong style={{color:"#fff"}}>Alexandre Mathias Donnat</strong> - Télécom Paris<br/>
+                    GitHub : <a href="https://github.com/alexandremathiasdonnat" target="_blank" rel="noreferrer" style={{color:"#7ecfea",textDecoration:"underline"}}>github.com/alexandremathiasdonnat</a>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -1699,26 +1777,65 @@ export default function App(){
           <Section title="Algorithme d'agrégation" titleColor="#fff" titleStyle={{fontSize:13,fontWeight:800,letterSpacing:0.5}} titleExtra={
             <button onClick={e=>{e.stopPropagation();setShowAlgoInfo(true);}} title="Infos sur les algorithmes" style={{background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.6)",borderRadius:"50%",width:15,height:15,fontSize:9,color:"#fff",cursor:"pointer",fontWeight:800,padding:0,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>i</button>
           }>
-            {ALGO_GROUPS.map((g,gi)=>{
-              const boxBg="#1e5fcc";
-              return(
-              <div key={g.label} style={{marginBottom:8,background:boxBg,borderRadius:8,padding:"8px 10px"}}>
-                <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{g.label}</div>
-                <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                  {g.algos.map(a=>(
-                    <TT key={a.id} text={a.desc}>
-                      <button onClick={()=>setAlgoId(a.id)} style={{
-                        width:"100%",textAlign:"left",
-                        background:algoId===a.id?"#ffffff":"#6898e8",
-                        color:"#000",
-                        border:`1px solid ${algoId===a.id?"#7aaaf0":"#4a78d8"}`,
-                        borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontWeight:algoId===a.id?700:400
-                      }}>{a.name}</button>
-                    </TT>
-                  ))}
+            {(()=>{
+              const OFFLINE_LABELS=["Stacking","Temporal Neural Aggregation"];
+              const ONLINE_LABELS=["OPERA","OPERA + Hierarchical Regimes"];
+              const renderGroupInner=(g,bg)=>(
+                <div key={g.label} style={{marginBottom:0,background:bg,borderRadius:7,padding:"7px 9px"}}>
+                  <div style={{fontSize:9,color:"#c8d9f0",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:5}}>{g.label}</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    {g.algos.map(a=>(
+                      <TT key={a.id} text={a.desc}>
+                        <button onClick={()=>setAlgoId(a.id)} style={{
+                          width:"100%",textAlign:"left",
+                          background:algoId===a.id?"#ffffff":"#6898e8",
+                          color:"#000",
+                          border:`1px solid ${algoId===a.id?"#7aaaf0":"#4a78d8"}`,
+                          borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontWeight:algoId===a.id?700:400
+                        }}>{a.name}</button>
+                      </TT>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );})}
+              );
+              const soloGroups=ALGO_GROUPS.filter(g=>!OFFLINE_LABELS.includes(g.label)&&!ONLINE_LABELS.includes(g.label));
+              const offlineGroups=ALGO_GROUPS.filter(g=>OFFLINE_LABELS.includes(g.label));
+              const onlineGroups=ALGO_GROUPS.filter(g=>ONLINE_LABELS.includes(g.label));
+              return(
+                <>
+                  {soloGroups.map(g=>(
+                    <div key={g.label} style={{marginBottom:8,background:"#1e5fcc",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>{g.label}</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                        {g.algos.map(a=>(
+                          <TT key={a.id} text={a.desc}>
+                            <button onClick={()=>setAlgoId(a.id)} style={{
+                              width:"100%",textAlign:"left",
+                              background:algoId===a.id?"#ffffff":"#6898e8",
+                              color:"#000",
+                              border:`1px solid ${algoId===a.id?"#7aaaf0":"#4a78d8"}`,
+                              borderRadius:7,padding:"5px 10px",fontSize:11,cursor:"pointer",fontWeight:algoId===a.id?700:400
+                            }}>{a.name}</button>
+                          </TT>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{marginBottom:8,background:"#1e5fcc",borderRadius:8,padding:"8px 10px"}}>
+                    <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Online Learning</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {onlineGroups.map(g=>renderGroupInner(g,"#2a6dd9"))}
+                    </div>
+                  </div>
+                  <div style={{marginBottom:8,background:"#1e5fcc",borderRadius:8,padding:"8px 10px"}}>
+                    <div style={{fontSize:9,color:"#fff",fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Offline Learning</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {offlineGroups.map(g=>renderGroupInner(g,"#2a6dd9"))}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
             {isOperaFamily&&(
               <>
                 <div style={{fontSize:10,color:"#fff",marginBottom:3,marginTop:6}}>Loss function</div>
@@ -1831,7 +1948,7 @@ export default function App(){
           {/* ── FORECAST ── */}
           {tab==="forecast"&&(
             <>
-              {!results&&<div style={{textAlign:"center",color:"#dbe7ff",padding:80,fontSize:13}}>Sélectionnez votre mode, configurez vos experts et cliquez sur <strong style={{color:"#ffffff"}}>Exécuter</strong></div>}
+              {!results&&<div style={{textAlign:"center",color:"#dbe7ff",padding:80,fontSize:13}}>Sélectionnez votre mode, configurez vos experts puis cliquez sur <strong style={{color:"#ffffff"}}>Run</strong></div>}
               {results&&(
                 <>
                   <Card title={`Prévisions vs Réel - ${horizonH}h : ${results.label}`} style={{background:"#a8a8a8"}} onExport={()=>csvDownload(forecastData,`previsions_${results.label}.csv`)}>
